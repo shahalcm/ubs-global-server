@@ -70,11 +70,21 @@ app.use(passport.initialize())
 
 // Health check
 app.get('/', (req, res) => {
+  const mongoose = require('mongoose')
   res.json({
     message: '🚀 UBS Global API Running',
     version: '1.0.0',
-    database: 'Connected'
+    database: mongoose && mongoose.connection && mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   })
+})
+
+// DB-ready middleware: return 503 if DB not connected
+app.use((req, res, next) => {
+  const mongoose = require('mongoose')
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ success: false, message: 'Service unavailable: database not connected' })
+  }
+  next()
 })
 
 // Routes

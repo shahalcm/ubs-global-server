@@ -21,10 +21,17 @@ const buildPagination = (page, limit, total) => ({
 })
 
 exports.getDashboardStats = async (req, res) => {
+  const now = new Date()
+  const currentPeriodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const previousPeriodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const previousPeriodEnd = new Date(currentPeriodStart)
+
   const [
     totalUsers, totalSellers, totalProducts,
     totalOrders, pendingOrders, totalRevenue,
-    pendingSellerRequests, pendingProducts
+    pendingSellerRequests, pendingProducts,
+    previousPeriodUsers, previousPeriodSellers, previousPeriodProducts,
+    previousPeriodRevenue, orderStatusBreakdown, dailyRevenueData
   ] = await Promise.all([
     User.countDocuments({ role: 'buyer' }),
     Seller.countDocuments({ status: 'approved' }),
@@ -35,8 +42,38 @@ exports.getDashboardStats = async (req, res) => {
       $group: { _id: null, total: { $sum: '$grossAmount' } }
     }]),
     Seller.countDocuments({ status: 'pending' }),
-    Product.countDocuments({ approvalStatus: 'pending' })
+    Product.countDocuments({ approvalStatus: 'pending' }),
+    User.countDocuments({ role: 'buyer', createdAt: { $gte: previousPeriodStart, $lt: previousPeriodEnd } }),
+    Seller.countDocuments({ status: 'approved', createdAt: { $gte: previousPeriodStart, $lt: previousPeriodEnd } }),
+    Product.countDocuments({ approvalStatus: 'approved', createdAt: { $gte: previousPeriodStart, $lt: previousPeriodEnd } }),
+    Transaction.aggregate([
+      { $match: { createdAt: { $gte: previousPeriodStart, $lt: previousPeriodEnd } } },
+      { $group: { _id: null, total: { $sum: '$grossAmount' } } }
+    ]),
+    Order.aggregate([
+      { $group: { _id: '$orderStatus', count: { $sum: 1 } } }
+    ]),
+    Transaction.aggregate([
+      { $match: { createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6) } } },
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+        revenue: { $sum: '$grossAmount' }
+      } },
+      { $sort: { _id: 1 } }
+    ])
   ])
+
+  // Calculate trends
+  const usersTrend = previousPeriodUsers ? Math.round(((totalUsers - previousPeriodUsers) / previousPeriodUsers) * 100) : 0
+  const sellersTrend = previousPeriodSellers ? Math.round(((totalSellers - previousPeriodSellers) / previousPeriodSellers) * 100) : 0
+  const productsTrend = previousPeriodProducts ? Math.round(((totalProducts - previousPeriodProducts) / previousPeriodProducts) * 100) : 0
+  const revenueTrend = previousPeriodRevenue[0]?.total ? Math.round(((totalRevenue[0]?.total - previousPeriodRevenue[0]?.total) / previousPeriodRevenue[0]?.total) * 100) : 0
+
+  // Format order status
+  const orderStatusMap = {}
+  orderStatusBreakdown.forEach(item => {
+    orderStatusMap[item._id] = item.count
+  })
 
   const recentOrders = await Order.find()
     .populate('buyerId', 'name avatar')
@@ -58,8 +95,18 @@ exports.getDashboardStats = async (req, res) => {
       pendingOrders,
       totalRevenue: totalRevenue[0]?.total || 0,
       pendingSellerRequests,
-      pendingProducts
+      pendingProducts,
+      usersTrend,
+      sellersTrend,
+      productsTrend,
+      revenueTrend,
+      orderStatusBreakdown: orderStatusMap
     },
+    dailyRevenueData: dailyRevenueData.map(item => ({
+      name: new Date(item._id).toLocaleDateString('en-US', { weekday: 'short' }),
+      date: item._id,
+      revenue: item.revenue
+    })),
     recentOrders,
     topSellers
   })
