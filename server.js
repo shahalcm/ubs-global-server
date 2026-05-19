@@ -15,16 +15,21 @@ require('./config/passport')
 const app = express()
 const server = http.createServer(app)
 
+// Allowed origins
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.ADMIN_URL,
+  'http://localhost:8081',
+  'http://localhost:5173',
+  'https://ubs-global-admin.vercel.app'
+]
+
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: [
-      process.env.CLIENT_URL,
-      process.env.ADMIN_URL,
-      'http://localhost:8081',
-      'http://localhost:5173'
-    ],
-    methods: ['GET', 'POST']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 })
 
@@ -44,15 +49,12 @@ const limiter = rateLimit({
   max: 100,
   message: 'Too many requests, please try again later.'
 })
+
 app.use('/api/', limiter)
 
-// CORS
+// CORS middleware
 app.use(cors({
-  origin: [
-    'http://localhost:8081',
-    'http://localhost:5173',
-    'http://10.0.2.2:5000'
-  ],
+  origin: allowedOrigins,
   credentials: true
 }))
 
@@ -71,19 +73,28 @@ app.use(passport.initialize())
 // Health check
 app.get('/', (req, res) => {
   const mongoose = require('mongoose')
+
   res.json({
     message: '🚀 UBS Global API Running',
     version: '1.0.0',
-    database: mongoose && mongoose.connection && mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+    database:
+      mongoose.connection.readyState === 1
+        ? 'Connected'
+        : 'Disconnected'
   })
 })
 
-// DB-ready middleware: return 503 if DB not connected
+// DB-ready middleware
 app.use((req, res, next) => {
   const mongoose = require('mongoose')
+
   if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ success: false, message: 'Service unavailable: database not connected' })
+    return res.status(503).json({
+      success: false,
+      message: 'Service unavailable: database not connected'
+    })
   }
+
   next()
 })
 
@@ -111,6 +122,7 @@ require('./socket/socketHandler')(io)
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack)
+
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal Server Error'
@@ -126,8 +138,9 @@ app.use('*', (req, res) => {
 })
 
 const PORT = process.env.PORT || 5000
+
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`)
   console.log(`📱 Client URL: ${process.env.CLIENT_URL}`)
-  console.log(`🖥️  Admin URL: ${process.env.ADMIN_URL}`)
+  console.log(`🖥️ Admin URL: ${process.env.ADMIN_URL}`)
 })
