@@ -7,12 +7,17 @@ const compression = require('compression')
 const morgan = require('morgan')
 const rateLimit = require('express-rate-limit')
 const passport = require('passport')
+
 require('dotenv').config()
 
 const connectDB = require('./config/db')
 require('./config/passport')
 
 const app = express()
+
+// FIX FOR RENDER PROXY
+app.set('trust proxy', 1)
+
 const server = http.createServer(app)
 
 // Allowed origins
@@ -21,7 +26,8 @@ const allowedOrigins = [
   process.env.ADMIN_URL,
   'http://localhost:8081',
   'http://localhost:5173',
-  'https://ubs-global-admin.vercel.app'
+  'https://ubs-global-admin.vercel.app',
+  'https://ubs-global-adminpanel.vercel.app'
 ]
 
 // Socket.io setup
@@ -33,10 +39,10 @@ const io = new Server(server, {
   }
 })
 
-// Make io accessible globally
+// Make io globally accessible
 global.io = io
 
-// Connect Database
+// Connect database
 connectDB()
 
 // Security middleware
@@ -60,7 +66,10 @@ app.use(cors({
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.urlencoded({
+  extended: true,
+  limit: '10mb'
+}))
 
 // Logging
 if (process.env.NODE_ENV === 'development') {
@@ -70,7 +79,7 @@ if (process.env.NODE_ENV === 'development') {
 // Passport
 app.use(passport.initialize())
 
-// Health check
+// Health check route
 app.get('/', (req, res) => {
   const mongoose = require('mongoose')
 
@@ -84,7 +93,7 @@ app.get('/', (req, res) => {
   })
 })
 
-// DB-ready middleware
+// Database connection check middleware
 app.use((req, res, next) => {
   const mongoose = require('mongoose')
 
