@@ -1,6 +1,25 @@
 const Product = require('../models/Product')
 const Seller = require('../models/Seller')
 const Category = require('../models/Category')
+const mongoose = require('mongoose')
+const SystemConfig = require('../models/SystemConfig')
+
+const getFileUrl = (req, file) => {
+  if (!file) return '';
+  if (file.path && (file.path.startsWith('http://') || file.path.startsWith('https://'))) {
+    return file.path;
+  }
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const normalizedPath = file.path.replace(/\\/g, '/');
+  if (normalizedPath.includes('/uploads/products/')) {
+    return `${protocol}://${host}/uploads/products/${file.filename}`;
+  } else if (normalizedPath.includes('/uploads/sellers/')) {
+    return `${protocol}://${host}/uploads/sellers/${file.filename}`;
+  } else {
+    return `${protocol}://${host}/uploads/${file.filename}`;
+  }
+};
 
 exports.addProduct = async (req, res) => {
   try {
@@ -40,8 +59,7 @@ exports.addProduct = async (req, res) => {
       })
     }
 
-    const images = req.files.map(file => file.path)
-    // file.path contains the full Cloudinary URL
+    const images = req.files.map(file => getFileUrl(req, file))
 
     // Validate seller exists and is approved
     const seller = await Seller.findById(req.seller._id)
@@ -52,13 +70,57 @@ exports.addProduct = async (req, res) => {
       })
     }
 
+    let categoryId = category
+    if (category && !mongoose.Types.ObjectId.isValid(category)) {
+      const categoryDoc = await Category.findOne({
+        $or: [
+          { slug: category.toLowerCase() },
+          { name: { $regex: new RegExp(`^${category}$`, 'i') } }
+        ]
+      })
+      if (categoryDoc) {
+        categoryId = categoryDoc._id
+      } else {
+        // Fallback: create category dynamically if it does not exist
+        const newCat = await Category.create({
+          name: category.charAt(0).toUpperCase() + category.slice(1),
+          slug: category.toLowerCase(),
+          isActive: true
+        })
+        categoryId = newCat._id
+      }
+    }
+
+    // Determine category name
+    let categoryName = ''
+    if (mongoose.Types.ObjectId.isValid(categoryId)) {
+      const catDoc = await Category.findById(categoryId)
+      if (catDoc) {
+        categoryName = catDoc.name
+      }
+    }
+
+    // Check system config settings
+    let config = await SystemConfig.findOne()
+    if (!config) {
+      config = { requireJobApproval: true, requireServiceApproval: true }
+    }
+
+    let approvalStatus = 'approved'
+    const normalizedCatName = categoryName.toLowerCase().trim()
+    if (normalizedCatName === 'job portal' && config.requireJobApproval) {
+      approvalStatus = 'pending'
+    } else if (normalizedCatName === 'service portal' && config.requireServiceApproval) {
+      approvalStatus = 'pending'
+    }
+
     const product = await Product.create({
       sellerId: req.seller._id,
       title: title.trim(),
       description: description.trim(),
       sku: sku || `UBS-${Date.now()}`,
       images,
-      category,
+      category: categoryId,
       subcategory,
       price: Number(price),
       comparePrice: comparePrice
@@ -84,7 +146,7 @@ exports.addProduct = async (req, res) => {
         : 0,
       tags: tags ? JSON.parse(tags) : [],
       status: 'active',
-      approvalStatus: 'pending'
+      approvalStatus
     })
 
     // Populate for response
@@ -94,7 +156,7 @@ exports.addProduct = async (req, res) => {
       .populate('category', 'name')
       .populate('sellerId', 'shopName shopLogo')
 
-    // Notify admin about new pending product
+    // Notify admin about new product
     if (global.io) {
       global.io.to('admin-room').emit('newProductPending', {
         productId: product._id,
@@ -104,9 +166,13 @@ exports.addProduct = async (req, res) => {
       })
     }
 
+    const message = approvalStatus === 'pending'
+      ? 'Your listing has been submitted and is pending admin approval.'
+      : 'Product created successfully and is now visible to buyers.'
+
     res.status(201).json({
       success: true,
-      message: 'Product submitted for admin approval. It will be visible to buyers once approved.',
+      message,
       product: populatedProduct
     })
   } catch (error) {
@@ -138,7 +204,33 @@ exports.getProducts = async (req, res) => {
       stock: { $gt: 0 }
     }
 
-    if (category) query.category = category
+    if (category) {
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        query.category = category
+      } else {
+        const categoryDoc = await Category.findOne({
+          $or: [
+            { slug: category.toLowerCase() },
+            { name: { $regex: new RegExp(`^${category}$`, 'i') } }
+          ]
+        })
+        if (categoryDoc) {
+          query.category = categoryDoc._id
+        } else {
+          // If the category does not exist, return an empty array with success
+          return res.json({
+            success: true,
+            products: [],
+            pagination: {
+              page: Number(page),
+              pages: 0,
+              total: 0,
+              hasMore: false
+            }
+          })
+        }
+      }
+    }
     if (minPrice || maxPrice) {
       query.price = {}
       if (minPrice) query.price.$gte = Number(minPrice)
@@ -160,7 +252,8 @@ exports.getProducts = async (req, res) => {
       sortQuery = { totalSales: -1 }
     }
 
-    const products = await Product.find(query)
+    let isRelated = false
+    let products = await Product.find(query)
       .populate('category', 'name slug image')
       .populate({
         path: 'sellerId',
@@ -171,14 +264,59 @@ exports.getProducts = async (req, res) => {
       .skip((Number(page) - 1) * Number(limit))
       .lean()
 
-    const total = await Product.countDocuments(query)
+    let total = await Product.countDocuments(query)
+
+    if (search && products.length === 0) {
+      isRelated = true
+      
+      // 1. Try finding by matching category name
+      const categoryDoc = await Category.findOne({
+        name: { $regex: search, $options: 'i' }
+      })
+      if (categoryDoc) {
+        products = await Product.find({
+          approvalStatus: 'approved',
+          status: 'active',
+          stock: { $gt: 0 },
+          category: categoryDoc._id
+        })
+          .populate('category', 'name slug image')
+          .populate({
+            path: 'sellerId',
+            select: `shopName shopLogo rating totalReviews isVerified businessType`
+          })
+          .sort(sortQuery)
+          .limit(Number(limit))
+          .lean()
+        total = products.length
+      }
+
+      // 2. If still empty, return general active products
+      if (products.length === 0) {
+        products = await Product.find({
+          approvalStatus: 'approved',
+          status: 'active',
+          stock: { $gt: 0 }
+        })
+          .populate('category', 'name slug image')
+          .populate({
+            path: 'sellerId',
+            select: `shopName shopLogo rating totalReviews isVerified businessType`
+          })
+          .sort(sortQuery)
+          .limit(Number(limit))
+          .lean()
+        total = products.length
+      }
+    }
 
     res.json({
       success: true,
       products,
+      isRelated,
       pagination: {
         page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
+        pages: Math.ceil(total / Number(limit)) || 1,
         total,
         hasMore: Number(page) * Number(limit) < total
       }
@@ -276,6 +414,7 @@ exports.getMyProducts = async (req, res) => {
       }
     })
   } catch (error) {
+    console.error('getMyProducts error:', error)
     res.status(500).json({
       success: false,
       message: error.message
@@ -310,7 +449,151 @@ exports.getSellerPublicProducts = async (req, res) => {
 }
 
 exports.updateProduct = async (req, res) => {
-  res.json({ success: true, message: 'Update product not fully implemented here yet' });
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id' })
+    }
+
+    const product = await Product.findById(id)
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' })
+    }
+
+    // Check ownership
+    if (product.sellerId.toString() !== req.seller._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Unauthorized action' })
+    }
+
+    const {
+      title,
+      description,
+      sku,
+      category,
+      subcategory,
+      price,
+      comparePrice,
+      costPerItem,
+      stock,
+      lowStockAlert,
+      weight,
+      length,
+      width,
+      height,
+      freeShipping,
+      shippingFee,
+      tags
+    } = req.body
+
+    // Update fields if provided
+    if (title) product.title = title.trim()
+    if (description) product.description = description.trim()
+    if (sku) product.sku = sku
+    if (price) product.price = Number(price)
+    if (comparePrice !== undefined) product.comparePrice = Number(comparePrice)
+    if (costPerItem !== undefined) product.costPerItem = Number(costPerItem)
+    if (stock !== undefined) product.stock = Number(stock)
+    if (lowStockAlert !== undefined) product.lowStockAlert = Number(lowStockAlert)
+    if (weight !== undefined) product.weight = Number(weight)
+    
+    if (length !== undefined || width !== undefined || height !== undefined) {
+      product.dimensions = {
+        length: length !== undefined ? Number(length) : product.dimensions?.length,
+        width: width !== undefined ? Number(width) : product.dimensions?.width,
+        height: height !== undefined ? Number(height) : product.dimensions?.height
+      }
+    }
+
+    if (freeShipping !== undefined) {
+      product.freeShipping = freeShipping === 'true' || freeShipping === true
+    }
+    if (shippingFee !== undefined) product.shippingFee = Number(shippingFee)
+    if (tags) product.tags = typeof tags === 'string' ? JSON.parse(tags) : tags
+    if (subcategory) product.subcategory = subcategory
+
+    // Handle uploaded images if any
+    if (req.files && req.files.length > 0) {
+      const uploadedImages = req.files.map(file => getFileUrl(req, file))
+      product.images = uploadedImages
+    }
+
+    // Resolve category if provided
+    let categoryId = category
+    if (category) {
+      if (!mongoose.Types.ObjectId.isValid(category)) {
+        const categoryDoc = await Category.findOne({
+          $or: [
+            { slug: category.toLowerCase() },
+            { name: { $regex: new RegExp(`^${category}$`, 'i') } }
+          ]
+        })
+        if (categoryDoc) {
+          categoryId = categoryDoc._id
+        } else {
+          const newCat = await Category.create({
+            name: category.charAt(0).toUpperCase() + category.slice(1),
+            slug: category.toLowerCase(),
+            isActive: true
+          })
+          categoryId = newCat._id
+        }
+      }
+      product.category = categoryId
+    }
+
+    // Check approval settings
+    let categoryName = ''
+    const currentCategoryId = product.category
+    if (mongoose.Types.ObjectId.isValid(currentCategoryId)) {
+      const catDoc = await Category.findById(currentCategoryId)
+      if (catDoc) categoryName = catDoc.name
+    }
+
+    let config = await SystemConfig.findOne()
+    if (!config) {
+      config = { requireJobApproval: true, requireServiceApproval: true }
+    }
+
+    let approvalStatus = product.approvalStatus
+    const normalizedCatName = categoryName.toLowerCase().trim()
+    if (normalizedCatName === 'job portal' && config.requireJobApproval) {
+      approvalStatus = 'pending'
+    } else if (normalizedCatName === 'service portal' && config.requireServiceApproval) {
+      approvalStatus = 'pending'
+    } else {
+      approvalStatus = 'approved'
+    }
+
+    product.approvalStatus = approvalStatus
+    await product.save()
+
+    const populatedProduct = await Product.findById(product._id)
+      .populate('category', 'name')
+      .populate('sellerId', 'shopName shopLogo')
+
+    // Notify admin if pending approval
+    if (approvalStatus === 'pending' && global.io) {
+      global.io.to('admin-room').emit('newProductPending', {
+        productId: product._id,
+        productName: product.title,
+        sellerShop: populatedProduct.sellerId?.shopName,
+        productImage: product.images?.[0]
+      })
+    }
+
+    const message = approvalStatus === 'pending'
+      ? 'Product updated successfully and is pending admin approval.'
+      : 'Product updated successfully.'
+
+    res.json({
+      success: true,
+      message,
+      product: populatedProduct
+    })
+  } catch (error) {
+    console.error('Update product error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
 }
 exports.deleteProduct = async (req, res) => {
   res.json({ success: true, message: 'Delete product not fully implemented here yet' });

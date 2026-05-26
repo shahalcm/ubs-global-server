@@ -6,8 +6,12 @@ const { sendOTP, verifyOTP } = require('../utils/sendOTP')
 // Send OTP
 exports.sendOTP = async (req, res) => {
   const { phone } = req.body
-  await sendOTP(phone)
-  res.json({ success: true, message: 'OTP sent' })
+  const otp = await sendOTP(phone)
+  if (process.env.NODE_ENV === 'development') {
+    res.json({ success: true, message: 'OTP sent', otp })
+  } else {
+    res.json({ success: true, message: 'OTP sent' })
+  }
 }
 
 // Verify OTP

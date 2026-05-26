@@ -21,7 +21,10 @@ exports.adminProtect = async (req, res, next) => {
         message: 'Admin access only'
       })
     }
-    req.admin = decoded
+    req.admin = {
+      ...decoded,
+      _id: decoded._id || decoded.id || '000000000000000000000000'
+    }
     next()
   } catch (error) {
     res.status(401).json({

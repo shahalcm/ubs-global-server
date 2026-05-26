@@ -71,6 +71,10 @@ app.use(express.urlencoded({
   limit: '10mb'
 }))
 
+// Serve static uploads
+const path = require('path')
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+
 // Logging
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'))
@@ -124,6 +128,7 @@ app.use('/api/notifications', require('./routes/notifications'))
 app.use('/api/reviews', require('./routes/reviews'))
 app.use('/api/banners', require('./routes/banners'))
 app.use('/api/admin', require('./routes/admin'))
+app.use('/api/properties', require('./routes/properties'))
 
 // Socket handler
 require('./socket/socketHandler')(io)
@@ -153,3 +158,4 @@ server.listen(PORT, () => {
   console.log(`📱 Client URL: ${process.env.CLIENT_URL}`)
   console.log(`🖥️ Admin URL: ${process.env.ADMIN_URL}`)
 })
+// Reload 2

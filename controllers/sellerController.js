@@ -3,6 +3,23 @@ const User = require('../models/User')
 const Order = require('../models/Order')
 const Product = require('../models/Product')
 
+const getFileUrl = (req, file) => {
+  if (!file) return '';
+  if (file.path && (file.path.startsWith('http://') || file.path.startsWith('https://'))) {
+    return file.path;
+  }
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const normalizedPath = file.path.replace(/\\/g, '/');
+  if (normalizedPath.includes('/uploads/products/')) {
+    return `${protocol}://${host}/uploads/products/${file.filename}`;
+  } else if (normalizedPath.includes('/uploads/sellers/')) {
+    return `${protocol}://${host}/uploads/sellers/${file.filename}`;
+  } else {
+    return `${protocol}://${host}/uploads/${file.filename}`;
+  }
+};
+
 // Helper function to get date range based on period
 const getDateRange = (period) => {
   const now = new Date()
@@ -73,10 +90,10 @@ exports.applyAsSeller = async (req, res) => {
 
     if (req.files) {
       if (req.files.shopLogo && req.files.shopLogo.length > 0) {
-        shopLogoUrl = req.files.shopLogo[0].path
+        shopLogoUrl = getFileUrl(req, req.files.shopLogo[0])
       }
       if (req.files.idProof && req.files.idProof.length > 0) {
-        idProofUrl = req.files.idProof[0].path
+        idProofUrl = getFileUrl(req, req.files.idProof[0])
       }
     }
 
@@ -114,7 +131,10 @@ exports.applyAsSeller = async (req, res) => {
 // Get seller profile
 exports.getSellerProfile = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id })
+    let seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
+    if (!seller) {
+      seller = await Seller.findOne({ userId: req.user._id }).sort({ createdAt: -1 })
+    }
     if (!seller) {
       return res.json({ success: true, seller: null })
     }
@@ -128,7 +148,7 @@ exports.getSellerProfile = async (req, res) => {
 // Get dashboard stats for seller
 exports.getDashboardStats = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id })
+    const seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller not found' })
     }
@@ -148,7 +168,7 @@ exports.getDashboardStats = async (req, res) => {
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: '$totalAmount' },
+          totalRevenue: { $sum: '$sellerEarnings' },
           count: { $sum: 1 }
         }
       }
@@ -196,7 +216,7 @@ exports.getDashboardStats = async (req, res) => {
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: '$totalAmount' }
+          totalRevenue: { $sum: '$sellerEarnings' }
         }
       }
     ])
@@ -229,7 +249,7 @@ exports.getDashboardStats = async (req, res) => {
 // Get earnings analytics
 exports.getEarnings = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id })
+    const seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller not found' })
     }
@@ -259,12 +279,12 @@ exports.getEarnings = async (req, res) => {
           {
             $group: {
               _id: null,
-              total: { $sum: '$totalAmount' }
+              total: { $sum: '$sellerEarnings' }
             }
           }
         ])
 
-        values.push(dayRevenue.length > 0 ? Math.round(dayRevenue[0].total / 100) : 0)
+        values.push(dayRevenue.length > 0 ? Math.round(dayRevenue[0].total) : 0)
       }
     } else if (period === 'month') {
       // Get revenue for each day of month (showing 14 days for cleaner view)
@@ -287,12 +307,12 @@ exports.getEarnings = async (req, res) => {
           {
             $group: {
               _id: null,
-              total: { $sum: '$totalAmount' }
+              total: { $sum: '$sellerEarnings' }
             }
           }
         ])
 
-        values.push(dayRevenue.length > 0 ? Math.round(dayRevenue[0].total / 100) : 0)
+        values.push(dayRevenue.length > 0 ? Math.round(dayRevenue[0].total) : 0)
       }
     } else if (period === 'year') {
       // Get revenue for each month
@@ -311,12 +331,12 @@ exports.getEarnings = async (req, res) => {
           {
             $group: {
               _id: null,
-              total: { $sum: '$totalAmount' }
+              total: { $sum: '$sellerEarnings' }
             }
           }
         ])
 
-        values.push(monthRevenue.length > 0 ? Math.round(monthRevenue[0].total / 100) : 0)
+        values.push(monthRevenue.length > 0 ? Math.round(monthRevenue[0].total) : 0)
       }
     }
 
@@ -336,7 +356,7 @@ exports.getEarnings = async (req, res) => {
 // Get recent orders
 exports.getRecentOrders = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id })
+    const seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller not found' })
     }
@@ -356,7 +376,7 @@ exports.getRecentOrders = async (req, res) => {
       id: `#UBS-${String(order._id).slice(-5).toUpperCase()}`,
       product: order.items?.[0]?.productName || 'Product',
       customer: 'Customer',
-      amount: `$${(order.totalAmount / 100).toFixed(2)}`,
+      amount: `$${(order.sellerEarnings || order.grandTotal || 0).toFixed(2)}`,
       status: order.orderStatus.charAt(0).toUpperCase() + order.orderStatus.slice(1)
     }))
 

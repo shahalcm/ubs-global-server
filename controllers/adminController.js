@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose')
+const mongoose = require('mongoose')
 const User = require('../models/User')
 const Seller = require('../models/Seller')
 const Product = require('../models/Product')
@@ -12,6 +12,7 @@ const ChatRoom = require('../models/ChatRoom')
 const Message = require('../models/Message')
 const { sendPushNotification, createInAppNotification } = require('../utils/notifications')
 const { sendEmail } = require('../utils/sendEmail')
+const SystemConfig = require('../models/SystemConfig')
 
 const buildPagination = (page, limit, total) => ({
   page,
@@ -39,7 +40,7 @@ exports.getDashboardStats = async (req, res) => {
     Order.countDocuments(),
     Order.countDocuments({ orderStatus: 'placed' }),
     Transaction.aggregate([{
-      $group: { _id: null, total: { $sum: '$grossAmount' } }
+      $group: { _id: null, total: { $sum: '$adminEarnings' } }
     }]),
     Seller.countDocuments({ status: 'pending' }),
     Product.countDocuments({ approvalStatus: 'pending' }),
@@ -48,7 +49,7 @@ exports.getDashboardStats = async (req, res) => {
     Product.countDocuments({ approvalStatus: 'approved', createdAt: { $gte: previousPeriodStart, $lt: previousPeriodEnd } }),
     Transaction.aggregate([
       { $match: { createdAt: { $gte: previousPeriodStart, $lt: previousPeriodEnd } } },
-      { $group: { _id: null, total: { $sum: '$grossAmount' } } }
+      { $group: { _id: null, total: { $sum: '$adminEarnings' } } }
     ]),
     Order.aggregate([
       { $group: { _id: '$orderStatus', count: { $sum: 1 } } }
@@ -57,7 +58,7 @@ exports.getDashboardStats = async (req, res) => {
       { $match: { createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6) } } },
       { $group: {
         _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        revenue: { $sum: '$grossAmount' }
+        revenue: { $sum: '$adminEarnings' }
       } },
       { $sort: { _id: 1 } }
     ])
@@ -334,9 +335,9 @@ exports.getRevenueAnalytics = async (req, res) => {
     {
       $group: {
         _id: null,
-        totalRevenue: { $sum: '$grossAmount' },
+        totalRevenue: { $sum: '$adminEarnings' },
         totalTransactions: { $sum: 1 },
-        totalCommission: { $sum: '$commission' }
+        totalCommission: { $sum: '$commissionAmount' }
       }
     }
   ])
@@ -678,3 +679,67 @@ exports.getTransactions = async (req, res) => {
     pagination: buildPagination(Number(page), Number(limit), total)
   })
 }
+
+exports.getSettings = async (req, res) => {
+  try {
+    let config = await SystemConfig.findOne()
+    if (!config) {
+      // Create default settings if none exist
+      config = await SystemConfig.create({
+        requireJobApproval: true,
+        requireServiceApproval: true
+      })
+    }
+    res.json({ success: true, settings: config })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.updateSettings = async (req, res) => {
+  try {
+    const { requireJobApproval, requireServiceApproval } = req.body
+    let config = await SystemConfig.findOne()
+    if (!config) {
+      config = new SystemConfig()
+    }
+    if (requireJobApproval !== undefined) config.requireJobApproval = requireJobApproval
+    if (requireServiceApproval !== undefined) config.requireServiceApproval = requireServiceApproval
+    
+    await config.save()
+    res.json({ success: true, message: 'Settings updated successfully', settings: config })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id' })
+    }
+    const product = await Product.findById(id)
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' })
+    }
+    
+    const { title, description, price, approvalStatus } = req.body
+    if (title !== undefined) product.title = title.trim()
+    if (description !== undefined) product.description = description.trim()
+    if (price !== undefined) product.price = Number(price)
+    product.approvalStatus = approvalStatus !== undefined ? approvalStatus : 'approved'
+
+    await product.save()
+
+    const populatedProduct = await Product.findById(product._id)
+      .populate('category', 'name')
+      .populate('sellerId', 'shopName email')
+
+    res.json({ success: true, message: 'Listing updated successfully', product: populatedProduct })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+

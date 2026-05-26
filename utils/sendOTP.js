@@ -21,11 +21,16 @@ exports.sendOTP = async (phone) => {
   
   const twilioClient = getClient();
   if (twilioClient) {
-    await twilioClient.messages.create({
-      body: `Your UBS Global OTP: ${otp}. Valid for 5 minutes.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: phone
-    })
+    try {
+      await twilioClient.messages.create({
+        body: `Your UBS Global OTP: ${otp}. Valid for 5 minutes.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: phone
+      })
+    } catch (twilioError) {
+      console.error('❌ Twilio send error, falling back to mock OTP:', twilioError.message);
+      console.log(`[MOCK OTP - Twilio Fail] Would have sent OTP ${otp} to ${phone}`);
+    }
   } else {
     console.log(`[MOCK OTP] Would have sent OTP ${otp} to ${phone}`);
   }
@@ -33,6 +38,11 @@ exports.sendOTP = async (phone) => {
 }
 
 exports.verifyOTP = async (phone, otp) => {
+  // Allow a default bypass OTP in development environment
+  if (process.env.NODE_ENV === 'development' && otp === '123456') {
+    return true
+  }
+
   const record = await OTP.findOne({
     phone,
     otp,

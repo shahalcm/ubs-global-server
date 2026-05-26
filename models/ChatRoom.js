@@ -10,7 +10,12 @@ const chatRoomSchema = new mongoose.Schema({
   },
   sellerId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Seller'
+    refPath: 'sellerModel'
+  },
+  sellerModel: {
+    type: String,
+    enum: ['Seller', 'User'],
+    default: 'Seller'
   },
   adminId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -27,6 +32,9 @@ const chatRoomSchema = new mongoose.Schema({
     default: 'active'
   },
   adminMonitoring: { type: Boolean, default: true },
+  meta: {
+    type: mongoose.Schema.Types.Mixed
+  },
   lastMessage: String,
   lastMessageAt: Date,
   lastMessageBy: String,

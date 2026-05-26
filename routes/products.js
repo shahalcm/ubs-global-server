@@ -15,6 +15,14 @@ const {
   getSellerPublicProducts
 } = require('../controllers/productController')
 
+// Seller routes
+router.get(
+  '/seller/my-products',
+  protect,
+  sellerProtect,
+  getMyProducts
+)
+
 // Public routes (buyers)
 router.get('/', getProducts)
 router.get('/search', searchProducts)
@@ -22,7 +30,6 @@ router.get('/category/:categoryId', getProductsByCategory)
 router.get('/seller/:sellerId', getSellerPublicProducts)
 router.get('/:id', getProduct)
 
-// Seller routes
 router.post(
   '/',
   protect,
@@ -38,11 +45,5 @@ router.put(
   updateProduct
 )
 router.delete('/:id', protect, sellerProtect, deleteProduct)
-router.get(
-  '/seller/my-products',
-  protect,
-  sellerProtect,
-  getMyProducts
-)
 
 module.exports = router

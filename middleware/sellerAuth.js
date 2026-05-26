@@ -15,6 +15,7 @@ exports.sellerProtect = async (req, res, next) => {
     req.seller = seller
     next()
   } catch (error) {
+    console.error('sellerProtect error:', error)
     res.status(500).json({
       success: false,
       message: error.message

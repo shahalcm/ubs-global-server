@@ -120,12 +120,12 @@ exports.sendMessage = async (req, res) => {
 
     const targetUserId = senderType === 'buyer' ? room.sellerId : room.buyerId
     const targetUser = senderType === 'buyer'
-      ? await Seller.findById(room.sellerId)
+      ? (room.sellerModel === 'User' ? await User.findById(room.sellerId) : await Seller.findById(room.sellerId))
       : await User.findById(room.buyerId)
 
     await createInAppNotification({
       userId: targetUserId,
-      userType: senderType === 'buyer' ? 'Seller' : 'User',
+      userType: senderType === 'buyer' ? (room.sellerModel === 'User' ? 'User' : 'Seller') : 'User',
       title: 'New chat message',
       message: `${senderName} sent a new message in the UBS Global chat.`,
       type: 'message',

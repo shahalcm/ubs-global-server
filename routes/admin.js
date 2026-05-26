@@ -21,6 +21,7 @@ router.patch('/users/:id/unblock', adminProtect, adminController.unblockUser)
 router.get('/products', adminProtect, adminController.getProducts)
 router.patch('/products/:id/approve', adminProtect, adminController.approveProduct)
 router.patch('/products/:id/reject', adminProtect, adminController.rejectProduct)
+router.put('/products/:id', adminProtect, adminController.updateProduct)
 
 // Orders
 router.get('/orders', adminProtect, adminController.getOrders)
@@ -53,5 +54,9 @@ router.post('/banners', adminProtect, adminController.createBanner)
 
 // Transactions
 router.get('/transactions', adminProtect, adminController.getTransactions)
+
+// System settings
+router.get('/settings', adminProtect, adminController.getSettings)
+router.put('/settings', adminProtect, adminController.updateSettings)
 
 module.exports = router
