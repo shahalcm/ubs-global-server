@@ -21,14 +21,18 @@ const connectDB = async (retries = 5, backoffMs = 5000) => {
     console.warn('⚠️ MongoDB disconnected')
   })
 
-  const attempt = async (remaining) => {
-    try {
-      const conn = await mongoose.connect(mongoURI, {
-        // keep defaults; mongoose 6+ uses proper defaults
-      })
-      console.log(`✅ MongoDB Connected: ${conn.connection.host}`)
-      console.log(`📦 Database: ${conn.connection.name}`)
-      return
+    const attempt = async (remaining) => {
+      try {
+        const conn = await mongoose.connect(mongoURI, {
+          maxPoolSize: 10, // Maintain up to 10 socket connections
+          minPoolSize: 2,  // Keep at least 2 connections
+          socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+          serverSelectionTimeoutMS: 5000, // Wait up to 5s to find MongoDB server
+          heartbeatFrequencyMS: 10000 // Send heartbeat check every 10s
+        })
+        console.log(`✅ MongoDB Connected: ${conn.connection.host}`)
+        console.log(`📦 Database: ${conn.connection.name}`)
+        return
     } catch (error) {
       console.error(`❌ MongoDB Error: ${error.message}`)
       if (remaining > 0) {

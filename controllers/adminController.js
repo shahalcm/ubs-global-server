@@ -376,13 +376,26 @@ exports.getContactRequests = async (req, res) => {
 }
 
 exports.getChatRooms = async (req, res) => {
-  const rooms = await ChatRoom.find()
-    .populate('buyerId', 'name avatar')
-    .populate('sellerId', 'shopName ownerName shopLogo')
-    .populate('productId', 'title images price')
-    .sort({ lastMessageAt: -1, updatedAt: -1 })
+  try {
+    const rooms = await ChatRoom.find()
+      .populate('buyerId', 'name avatar')
+      .populate('sellerId', 'shopName ownerName shopLogo')
+      .populate('productId', 'title images price')
+      .sort({ lastMessageAt: -1, updatedAt: -1 })
 
-  res.json({ success: true, rooms })
+    const { isBotActive } = require('../services/aiChatService')
+    const roomsWithBotStatus = await Promise.all(rooms.map(async (room) => {
+      const active = await isBotActive(room._id)
+      return {
+        ...room.toObject(),
+        botActive: active
+      }
+    }))
+
+    res.json({ success: true, rooms: roomsWithBotStatus })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
 }
 
 exports.getAdminChatMessages = async (req, res) => {

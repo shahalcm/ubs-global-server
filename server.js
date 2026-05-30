@@ -9,6 +9,8 @@ const rateLimit = require('express-rate-limit')
 const passport = require('passport')
 
 require('dotenv').config()
+const validateEnv = require('./utils/envValidate')
+validateEnv()
 
 const connectDB = require('./config/db')
 require('./config/passport')
@@ -33,10 +35,19 @@ const allowedOrigins = [
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        callback(new Error('Not allowed by CORS for sockets'))
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true
-  }
+  },
+  transports: ['websocket', 'polling'], // Support both websockets and fallback polling
+  pingTimeout: 60000,                  // Close sockets after 60s of ping inactivity
+  pingInterval: 25000                  // Heartbeat check interval
 })
 
 // Make io globally accessible
@@ -60,7 +71,15 @@ app.use('/api/', limiter)
 
 // CORS middleware
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      console.warn(`⚠️ Blocked by CORS: Origin [${origin}] is not in the whitelist.`);
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
   credentials: true
 }))
 
@@ -129,9 +148,12 @@ app.use('/api/reviews', require('./routes/reviews'))
 app.use('/api/banners', require('./routes/banners'))
 app.use('/api/admin', require('./routes/admin'))
 app.use('/api/properties', require('./routes/properties'))
+app.use('/api/bot-config', require('./routes/botConfig'))
+app.use('/api/calls', require('./routes/callRoutes'))
 
 // Socket handler
 require('./socket/socketHandler')(io)
+require('./socket/callSocket')(io)
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -153,9 +175,17 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 5000
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`)
   console.log(`📱 Client URL: ${process.env.CLIENT_URL}`)
   console.log(`🖥️ Admin URL: ${process.env.ADMIN_URL}`)
 })
-// Reload 2
+
+// Global exception safety nets
+process.on('uncaughtException', (error) => {
+  console.error('💥 UNCAUGHT EXCEPTION PREVENTED CRASH:', error.stack || error)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 UNHANDLED REJECTION AT:', promise, 'REASON:', reason)
+})

@@ -48,7 +48,10 @@ exports.getMessages = async (req, res) => {
     const messages = await Message.find({ chatRoomId: roomId, isDeleted: false })
       .sort({ createdAt: 1 })
 
-    res.json({ success: true, room, messages })
+    const { isBotActive } = require('../services/aiChatService')
+    const botActive = await isBotActive(roomId)
+
+    res.json({ success: true, room, messages, botActive })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -89,6 +92,20 @@ exports.sendMessage = async (req, res) => {
       offerDetails,
       isRead: false
     })
+
+    if (senderType === 'seller') {
+      const { deactivateBot, isBotActive } = require('../services/aiChatService')
+      const wasActive = await isBotActive(roomId)
+      if (wasActive) {
+        await deactivateBot(roomId, 'seller_takeover')
+        if (global.io) {
+          global.io.to(roomId).emit('sellerTookOver', {
+            roomId,
+            message: 'The seller has joined the conversation! 👋'
+          })
+        }
+      }
+    }
 
     const unreadUpdate = {}
     if (senderType === 'buyer') {

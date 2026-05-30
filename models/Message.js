@@ -11,7 +11,7 @@ const messageSchema = new mongoose.Schema({
   },
   senderType: {
     type: String,
-    enum: ['buyer', 'seller', 'admin'],
+    enum: ['buyer', 'seller', 'admin', 'bot'],
     required: true
   },
   senderName: String,
@@ -43,6 +43,18 @@ const messageSchema = new mongoose.Schema({
   },
   isRead: { type: Boolean, default: false },
   readAt: Date,
-  isDeleted: { type: Boolean, default: false }
+  isDeleted: { type: Boolean, default: false },
+  isBot: {
+    type: Boolean,
+    default: false
+  },
+  isTakeover: {
+    type: Boolean,
+    default: false
+  },
+  botSessionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'BotSession'
+  }
 }, { timestamps: true })
 module.exports = mongoose.model('Message', messageSchema)
