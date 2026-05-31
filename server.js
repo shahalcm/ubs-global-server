@@ -29,7 +29,8 @@ const allowedOrigins = [
   'http://localhost:8081',
   'http://localhost:5173',
   'https://ubs-global-admin.vercel.app',
-  'https://ubs-global-adminpanel.vercel.app'
+  'https://ubs-global-adminpanel.vercel.app',
+  'https://admin.ubsglobalapp.com'
 ]
 
 // Socket.io setup
