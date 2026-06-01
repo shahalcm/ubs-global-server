@@ -40,13 +40,19 @@ const allowedOrigins = [
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow all origins for mobile socket clients to prevent CORS blocks
+    origin: '*',
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['polling', 'websocket'], // Try polling first for robust handshakes, then upgrade to websocket
-  pingTimeout: 60000,                  // Close sockets after 60s of ping inactivity
-  pingInterval: 25000                  // Heartbeat check interval
+  transports: ['websocket', 'polling'], // Prefer websocket, fallback to polling
+  pingTimeout: 120000,                  // Increased to 2 minutes
+  pingInterval: 30000,                  // Increased to 30 seconds
+  maxHttpBufferSize: 1e6,               // 1MB max message size
+  allowEIO3: true,                      // Support older Socket.IO clients
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  reconnectionAttempts: Infinity
 })
 
 // Make io globally accessible
