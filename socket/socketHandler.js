@@ -190,5 +190,17 @@ module.exports = (io) => {
     socket.on('disconnect', () => {
       console.log('🔌 Socket disconnected:', socket.id)
     })
+
+    socket.on('disconnecting', (reason) => {
+      console.log('🔌 Socket disconnecting:', socket.id, 'Reason:', reason)
+    })
+
+    socket.on('error', (error) => {
+      console.error('🔌 Socket error:', socket.id, error)
+    })
+
+    socket.on('connect_error', (error) => {
+      console.error('🔌 Connection error:', socket.id, error)
+    })
   })
 }
