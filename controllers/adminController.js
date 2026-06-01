@@ -10,6 +10,7 @@ const Notification = require('../models/Notification')
 const ContactRequest = require('../models/ContactRequest')
 const ChatRoom = require('../models/ChatRoom')
 const Message = require('../models/Message')
+const Review = require('../models/Review')
 const { sendPushNotification, createInAppNotification } = require('../utils/notifications')
 const { sendEmail } = require('../utils/sendEmail')
 const SystemConfig = require('../models/SystemConfig')
@@ -750,6 +751,89 @@ exports.updateProduct = async (req, res) => {
       .populate('sellerId', 'shopName email')
 
     res.json({ success: true, message: 'Listing updated successfully', product: populatedProduct })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.getReviews = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, isApproved, isFlagged } = req.query
+    const query = {}
+    
+    if (isApproved !== undefined) query.isApproved = isApproved === 'true'
+    if (isFlagged !== undefined) query.isFlagged = isFlagged === 'true'
+    
+    if (search) {
+      query.$or = [
+        { comment: new RegExp(search, 'i') },
+        { title: new RegExp(search, 'i') }
+      ]
+    }
+    
+    const total = await Review.countDocuments(query)
+    const reviews = await Review.find(query)
+      .populate('buyerId', 'name email avatar')
+      .populate('productId', 'title images price')
+      .populate('sellerId', 'shopName')
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      
+    res.json({
+      success: true,
+      reviews,
+      pagination: buildPagination(Number(page), Number(limit), total)
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.approveReview = async (req, res) => {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid review id' })
+    }
+    const review = await Review.findById(id)
+    if (!review) {
+      return res.status(404).json({ success: false, message: 'Review not found' })
+    }
+    
+    review.isApproved = true
+    review.isFlagged = false
+    await review.save()
+    
+    const { recalculateRatings } = require('./reviewController')
+    await recalculateRatings(review.productId, review.sellerId)
+    
+    res.json({ success: true, message: 'Review approved successfully', review })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.deleteReview = async (req, res) => {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid review id' })
+    }
+    const review = await Review.findById(id)
+    if (!review) {
+      return res.status(404).json({ success: false, message: 'Review not found' })
+    }
+    
+    const productId = review.productId
+    const sellerId = review.sellerId
+    
+    await Review.findByIdAndDelete(id)
+    
+    const { recalculateRatings } = require('./reviewController')
+    await recalculateRatings(productId, sellerId)
+    
+    res.json({ success: true, message: 'Review deleted successfully' })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }

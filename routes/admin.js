@@ -59,4 +59,9 @@ router.get('/transactions', adminProtect, adminController.getTransactions)
 router.get('/settings', adminProtect, adminController.getSettings)
 router.put('/settings', adminProtect, adminController.updateSettings)
 
+// Reviews
+router.get('/reviews', adminProtect, adminController.getReviews)
+router.patch('/reviews/:id/approve', adminProtect, adminController.approveReview)
+router.delete('/reviews/:id', adminProtect, adminController.deleteReview)
+
 module.exports = router
