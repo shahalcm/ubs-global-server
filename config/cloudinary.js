@@ -41,14 +41,19 @@ let productStorage
 let sellerStorage
 
 if (isCloudinaryConfigured()) {
-  if (!process.env.CLOUDINARY_URL) {
+  const url = process.env.CLOUDINARY_URL
+  const hasValidUrl = url && url.startsWith('cloudinary://') && 
+                      !url.includes('<your_') && 
+                      !url.includes('your_api_key')
+
+  if (!hasValidUrl) {
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dtubrloue',
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET
     })
   } else {
-    // If CLOUDINARY_URL is set, cloudinary automatically configures itself, but we can call config() to ensure setup
+    // If CLOUDINARY_URL is set and valid, cloudinary automatically configures itself, but we can call config() to ensure setup
     cloudinary.config()
   }
 
