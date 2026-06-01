@@ -8,5 +8,6 @@ router.get('/my-orders', protect, orderController.getMyOrders)
 router.get('/seller-orders', protect, orderController.getSellerOrders)
 router.patch('/:id/status', protect, orderController.updateOrderStatus)
 router.get('/:id/track', protect, orderController.trackOrder)
+router.post('/:id/cancel', protect, orderController.cancelOrder)
 
 module.exports = router

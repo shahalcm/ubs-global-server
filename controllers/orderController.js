@@ -163,3 +163,86 @@ exports.updateOrderStatus = async (req, res) => {
     res.status(500).json({ success: false, message: error.message })
   }
 }
+
+exports.cancelOrder = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { reason } = req.body
+
+    const order = await Order.findById(id)
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' })
+    }
+
+    // Verify authorized user
+    if (order.buyerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to cancel this order' })
+    }
+
+    // Verify cancellable status
+    const cancellableStatuses = ['placed', 'confirmed', 'packed']
+    if (!cancellableStatuses.includes(order.orderStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Order status is '${order.orderStatus}'. Only orders in 'placed', 'confirmed', or 'packed' status can be cancelled.`
+      })
+    }
+
+    // Update status and timeline
+    order.orderStatus = 'cancelled'
+    order.timeline.push({
+      status: 'cancelled',
+      timestamp: new Date(),
+      note: reason || 'Order cancelled by buyer.'
+    })
+
+    // Restock items
+    for (const item of order.items) {
+      if (item.productId) {
+        const product = await Product.findById(item.productId)
+        if (product) {
+          product.stock += item.quantity
+          product.totalSales = Math.max(0, product.totalSales - item.quantity)
+          await product.save()
+        }
+      }
+    }
+
+    // Update Transaction status if exists
+    const transaction = await Transaction.findOne({ orderId: order._id })
+    if (transaction) {
+      transaction.status = order.paymentStatus === 'paid' ? 'refunded' : 'failed'
+      await transaction.save()
+    }
+
+    await order.save()
+
+    // Emit Socket.io notifications
+    if (global.io) {
+      // Emit to seller ID room (from seller context)
+      global.io.to(order.sellerId.toString()).emit('orderStatusChanged', {
+        orderId: order._id,
+        status: 'cancelled'
+      })
+
+      // Emit to seller's owner user ID room
+      const seller = await Seller.findById(order.sellerId)
+      if (seller && seller.userId) {
+        global.io.to(seller.userId.toString()).emit('orderStatusChanged', {
+          orderId: order._id,
+          status: 'cancelled'
+        })
+      }
+
+      // Emit to admin room
+      global.io.to('admin-room').emit('orderStatusChanged', {
+        orderId: order._id,
+        status: 'cancelled'
+      })
+    }
+
+    res.json({ success: true, message: 'Order cancelled successfully', order })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}

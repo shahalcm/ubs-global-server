@@ -28,6 +28,10 @@ const allowedOrigins = [
   process.env.ADMIN_URL,
   'http://localhost:8081',
   'http://localhost:5173',
+  'http://127.0.0.1:8081',
+  'http://10.0.2.2:8081',
+  'https://ubs-global-server-production.up.railway.app',
+  'https://ubs-global-server-production.up.railway.app/api',
   'https://ubs-global-admin.vercel.app',
   'https://ubs-global-adminpanel.vercel.app',
   'https://admin.ubsglobalapp.com'
@@ -36,17 +40,11 @@ const allowedOrigins = [
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
-        callback(null, true)
-      } else {
-        callback(new Error('Not allowed by CORS for sockets'))
-      }
-    },
+    origin: '*', // Allow all origins for mobile socket clients to prevent CORS blocks
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['websocket', 'polling'], // Support both websockets and fallback polling
+  transports: ['polling', 'websocket'], // Try polling first for robust handshakes, then upgrade to websocket
   pingTimeout: 60000,                  // Close sockets after 60s of ping inactivity
   pingInterval: 25000                  // Heartbeat check interval
 })
