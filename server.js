@@ -53,7 +53,7 @@ const io = new Server(server, {
   allowEIO3: true,                      // Support older Socket.IO clients
   reconnection: true,
   reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
+  reconnectionDelayMax: 5000,3333333333333
   reconnectionAttempts: Infinity
 })
 
