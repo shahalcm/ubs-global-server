@@ -41,15 +41,20 @@ const allowedOrigins = [
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      // Dynamically allow all origins to prevent CORS blocks when credentials is true
       callback(null, true)
     },
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['polling', 'websocket'], // Start with polling for compatibility, upgrade to websocket
-  pingTimeout: 30000,                  // Close sockets after 30s of ping inactivity (better for cloud proxies)
-  pingInterval: 10000                  // Heartbeat check every 10s to keep connection alive on Railway load balancer
+  transports: ['websocket', 'polling'],
+  pingTimeout: 120000,                  // 2 minutes - give clients time to respond
+  pingInterval: 30000,                  // 30 seconds - less frequent pings
+  maxHttpBufferSize: 1e6,               // 1MB max message size
+  allowEIO3: true,                      // Support older Socket.IO clients
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,3333333333333
+  reconnectionAttempts: Infinity
 })
 
 // Make io globally accessible
