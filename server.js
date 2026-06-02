@@ -40,7 +40,10 @@ const allowedOrigins = [
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow all origins for mobile socket clients to prevent CORS blocks
+    origin: (origin, callback) => {
+      // Dynamically allow all origins to prevent CORS blocks when credentials is true
+      callback(null, true)
+    },
     methods: ['GET', 'POST'],
     credentials: true
   },
