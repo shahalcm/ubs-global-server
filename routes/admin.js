@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const adminController = require('../controllers/adminController')
 const { adminProtect } = require('../middleware/adminAuth')
+const { categoryUpload } = require('../config/cloudinary')
 
 // Dashboard
 router.get('/dashboard-stats', adminProtect, adminController.getDashboardStats)
@@ -44,8 +45,8 @@ router.post('/notifications/send', adminProtect, adminController.sendNotificatio
 
 // Categories
 router.get('/categories', adminProtect, adminController.getCategories)
-router.post('/categories', adminProtect, adminController.createCategory)
-router.put('/categories/:id', adminProtect, adminController.updateCategory)
+router.post('/categories', adminProtect, categoryUpload.single('image'), adminController.createCategory)
+router.put('/categories/:id', adminProtect, categoryUpload.single('image'), adminController.updateCategory)
 router.delete('/categories/:id', adminProtect, adminController.deleteCategory)
 
 // Banners

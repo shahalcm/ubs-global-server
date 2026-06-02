@@ -610,14 +610,24 @@ exports.getCategories = async (req, res) => {
 }
 
 exports.createCategory = async (req, res) => {
-  const { name, slug, image, description, parent, isActive, sortOrder } = req.body
+  const { name, slug, description, parent, isActive, sortOrder } = req.body
+  let image = req.body.image
+
+  if (req.file) {
+    if (req.file.path && req.file.path.startsWith('http')) {
+      image = req.file.path
+    } else {
+      image = `${req.protocol}://${req.get('host')}/uploads/categories/${req.file.filename}`
+    }
+  }
+
   const category = await Category.create({
     name,
     slug,
     image,
     description,
     parent: parent || null,
-    isActive: isActive !== false,
+    isActive: isActive === 'false' ? false : (isActive !== false),
     sortOrder: Number(sortOrder) || 0
   })
   res.status(201).json({ success: true, category })
@@ -625,7 +635,23 @@ exports.createCategory = async (req, res) => {
 
 exports.updateCategory = async (req, res) => {
   const { id } = req.params
-  const updates = req.body
+  const updates = { ...req.body }
+
+  if (req.file) {
+    if (req.file.path && req.file.path.startsWith('http')) {
+      updates.image = req.file.path
+    } else {
+      updates.image = `${req.protocol}://${req.get('host')}/uploads/categories/${req.file.filename}`
+    }
+  }
+
+  if (updates.isActive !== undefined) {
+    updates.isActive = updates.isActive === 'true' || updates.isActive === true
+  }
+  if (updates.sortOrder !== undefined) {
+    updates.sortOrder = Number(updates.sortOrder) || 0
+  }
+
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ success: false, message: 'Invalid category id' })
   }
