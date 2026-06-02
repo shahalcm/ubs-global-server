@@ -8,7 +8,7 @@ const morgan = require('morgan')
 const rateLimit = require('express-rate-limit')
 const passport = require('passport')
 
-require('dotenv').config()
+require('dotenv').config({ override: true })
 const validateEnv = require('./utils/envValidate')
 validateEnv()
 

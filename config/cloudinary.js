@@ -4,6 +4,16 @@ const multer = require('multer')
 const fs = require('fs')
 const path = require('path')
 
+// Delete placeholder or malformed CLOUDINARY_URL from process.env to prevent Cloudinary Node SDK from using it and causing auth failures.
+if (
+  process.env.CLOUDINARY_URL &&
+  (process.env.CLOUDINARY_URL.includes('<') ||
+    process.env.CLOUDINARY_URL.includes('>') ||
+    process.env.CLOUDINARY_URL.includes('your_api_key'))
+) {
+  delete process.env.CLOUDINARY_URL
+}
+
 const isCloudinaryConfigured = () => {
   const url = process.env.CLOUDINARY_URL
   if (url && url.startsWith('cloudinary://')) {
