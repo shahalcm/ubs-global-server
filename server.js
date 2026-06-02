@@ -47,7 +47,7 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['websocket', 'polling'], // Prioritize websocket to prevent Railway sticky session disconnect loops
+  transports: ['polling', 'websocket'], // Start with polling for compatibility, upgrade to websocket
   pingTimeout: 30000,                  // Close sockets after 30s of ping inactivity (better for cloud proxies)
   pingInterval: 10000                  // Heartbeat check every 10s to keep connection alive on Railway load balancer
 })
