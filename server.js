@@ -44,9 +44,9 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['polling', 'websocket'], // Try polling first for robust handshakes, then upgrade to websocket
-  pingTimeout: 60000,                  // Close sockets after 60s of ping inactivity
-  pingInterval: 25000                  // Heartbeat check interval
+  transports: ['websocket', 'polling'], // Prioritize websocket to prevent Railway sticky session disconnect loops
+  pingTimeout: 30000,                  // Close sockets after 30s of ping inactivity (better for cloud proxies)
+  pingInterval: 10000                  // Heartbeat check every 10s to keep connection alive on Railway load balancer
 })
 
 // Make io globally accessible
