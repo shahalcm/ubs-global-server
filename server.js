@@ -30,8 +30,8 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:8081',
   'http://10.0.2.2:8081',
-  'https://ubs-global-server-production.up.railway.app',
-  'https://ubs-global-server-production.up.railway.app/api',
+  'https://api.ubsglobalapp.com',
+  'https://api.ubsglobalapp.com/api',
   'https://ubs-global-admin.vercel.app',
   'https://ubs-global-adminpanel.vercel.app',
   'https://admin.ubsglobalapp.com'
