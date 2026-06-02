@@ -74,8 +74,11 @@ app.use('/api/', limiter)
 // CORS middleware
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, etc.)
-    if (!origin || allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
+    // Check if the origin matches a local network / private IP address (e.g., http://10.x.x.x:port or http://192.168.x.x:port)
+    const isLocalIp = origin && /^http:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin);
+
+    // Allow requests with no origin (like native mobile apps, curl, etc.) or matched in whitelist
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin) || isLocalIp) {
       callback(null, true)
     } else {
       console.warn(`⚠️ Blocked by CORS: Origin [${origin}] is not in the whitelist.`);
