@@ -604,3 +604,47 @@ exports.searchProducts = async (req, res) => {
 exports.getProductsByCategory = async (req, res) => {
   res.json({ success: true, products: [] });
 }
+
+// Start direct chat with product seller
+exports.startProductChat = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' })
+    }
+
+    const ChatRoom = require('../models/ChatRoom')
+
+    // Check if chat room already exists for this buyer and this product
+    let chatRoom = await ChatRoom.findOne({
+      productId: product._id,
+      buyerId: req.user._id
+    })
+
+    if (!chatRoom) {
+      chatRoom = await ChatRoom.create({
+        buyerId: req.user._id,
+        sellerId: product.sellerId,
+        sellerModel: 'Seller',
+        productId: product._id,
+        roomName: `${req.user.name} about ${product.title}`,
+        status: 'active',
+        adminMonitoring: false, // Direct buyer-seller chat
+        lastMessage: `Inquiry about ${product.title}`,
+        lastMessageAt: new Date(),
+        lastMessageBy: 'buyer'
+      })
+    }
+
+    res.json({
+      success: true,
+      chatRoomId: chatRoom._id,
+      message: 'Chat started successfully'
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    })
+  }
+}
