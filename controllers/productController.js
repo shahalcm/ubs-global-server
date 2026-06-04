@@ -9,8 +9,9 @@ const getFileUrl = (req, file) => {
   if (file.path && (file.path.startsWith('http://') || file.path.startsWith('https://'))) {
     return file.path;
   }
-  const host = req.get('host');
-  const protocol = req.protocol;
+  const host = req.get('host') || '';
+  const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
+  const protocol = isLocal ? req.protocol : 'https';
   const normalizedPath = file.path.replace(/\\/g, '/');
   if (normalizedPath.includes('/uploads/products/')) {
     return `${protocol}://${host}/uploads/products/${file.filename}`;

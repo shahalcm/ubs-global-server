@@ -50,6 +50,7 @@ const isCloudinaryConfigured = () => {
 let productStorage
 let sellerStorage
 let categoryStorage
+let avatarStorage
 
 if (isCloudinaryConfigured()) {
   const url = process.env.CLOUDINARY_URL
@@ -108,6 +109,18 @@ if (isCloudinaryConfigured()) {
       public_id: `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     })
   })
+
+  avatarStorage = new CloudinaryStorage({
+    cloudinary,
+    params: async (req, file) => ({
+      folder: 'ubsglobal/avatars',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [
+        { width: 300, height: 300, crop: 'fill' }
+      ],
+      public_id: `avatar_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    })
+  })
 } else {
   // Fallback to local storage
   productStorage = multer.diskStorage({
@@ -151,6 +164,20 @@ if (isCloudinaryConfigured()) {
       cb(null, `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`)
     }
   })
+
+  avatarStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      const dir = path.join(__dirname, '../uploads/avatars')
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      cb(null, dir)
+    },
+    filename: function (req, file, cb) {
+      const ext = file.originalname ? path.extname(file.originalname) : '.jpg'
+      cb(null, `avatar_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`)
+    }
+  })
 }
 
 const productUpload = multer({
@@ -182,10 +209,23 @@ const categoryUpload = multer({
   }
 })
 
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only images allowed'), false)
+    }
+  }
+})
+
 module.exports = {
   cloudinary,
   productUpload,
   sellerUpload,
   categoryUpload,
+  avatarUpload,
   isCloudinaryConfigured
 }

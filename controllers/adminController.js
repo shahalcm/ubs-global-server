@@ -14,6 +14,8 @@ const Review = require('../models/Review')
 const { sendPushNotification, createInAppNotification } = require('../utils/notifications')
 const { sendEmail } = require('../utils/sendEmail')
 const SystemConfig = require('../models/SystemConfig')
+const LegalDoc = require('../models/LegalDoc')
+const GDPRRequest = require('../models/GDPRRequest')
 
 const buildPagination = (page, limit, total) => ({
   page,
@@ -617,7 +619,10 @@ exports.createCategory = async (req, res) => {
     if (req.file.path && req.file.path.startsWith('http')) {
       image = req.file.path
     } else {
-      image = `${req.protocol}://${req.get('host')}/uploads/categories/${req.file.filename}`
+      const host = req.get('host') || '';
+      const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
+      const protocol = isLocal ? req.protocol : 'https';
+      image = `${protocol}://${host}/uploads/categories/${req.file.filename}`
     }
   }
 
@@ -641,7 +646,10 @@ exports.updateCategory = async (req, res) => {
     if (req.file.path && req.file.path.startsWith('http')) {
       updates.image = req.file.path
     } else {
-      updates.image = `${req.protocol}://${req.get('host')}/uploads/categories/${req.file.filename}`
+      const host = req.get('host') || '';
+      const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
+      const protocol = isLocal ? req.protocol : 'https';
+      updates.image = `${protocol}://${host}/uploads/categories/${req.file.filename}`
     }
   }
 
@@ -860,6 +868,124 @@ exports.deleteReview = async (req, res) => {
     await recalculateRatings(productId, sellerId)
     
     res.json({ success: true, message: 'Review deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Update Legal Compliance document (Privacy, Terms, Refund, Deletion policy)
+exports.updateLegalDoc = async (req, res) => {
+  try {
+    const { key } = req.params
+    const { title, content } = req.body
+
+    let doc = await LegalDoc.findOne({ key })
+    if (doc) {
+      if (title) doc.title = title
+      if (content) doc.content = content
+      doc.lastUpdatedBy = req.admin?.email || 'admin'
+      await doc.save()
+    } else {
+      doc = await LegalDoc.create({
+        key,
+        title,
+        content,
+        lastUpdatedBy: req.admin?.email || 'admin'
+      })
+    }
+
+    res.json({
+      success: true,
+      message: 'Legal document updated successfully',
+      legalDoc: doc
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Get compliance GDPR requests list
+exports.getGDPRRequests = async (req, res) => {
+  try {
+    const { requestType, status, page = 1, limit = 20 } = req.query
+    const query = {}
+
+    if (requestType) query.requestType = requestType
+    if (status) query.status = status
+
+    const total = await GDPRRequest.countDocuments(query)
+    const requests = await GDPRRequest.find(query)
+      .populate('userId', 'name email phone avatar isDeleted')
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+
+    res.json({
+      success: true,
+      requests,
+      pagination: buildPagination(Number(page), Number(limit), total)
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Process compliance requests (Executing Hard-delete for delete-data type)
+exports.updateGDPRRequest = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { status, adminNote } = req.body
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid request id' })
+    }
+
+    const request = await GDPRRequest.findById(id)
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'GDPR Request not found' })
+    }
+
+    if (adminNote !== undefined) request.adminNote = adminNote
+    if (status !== undefined) request.status = status
+
+    // If request status is updated to completed and requestType is delete-data (HARD DELETE)
+    if (status === 'completed' && request.requestType === 'delete-data') {
+      const targetUserId = request.userId
+
+      // Delete Seller & Products
+      const seller = await Seller.findOne({ userId: targetUserId })
+      if (seller) {
+        await Product.deleteMany({ sellerId: seller._id })
+        await Seller.findByIdAndDelete(seller._id)
+      }
+
+      // Delete Reviews
+      await Review.deleteMany({ userId: targetUserId })
+
+      // Anonymize/Clear Chat Messages
+      await Message.updateMany(
+        { senderId: targetUserId },
+        { senderName: 'Deleted User', senderId: null }
+      )
+
+      // Delete In-App Notifications
+      await Notification.deleteMany({ userId: targetUserId })
+
+      // Hard delete the user
+      await User.findByIdAndDelete(targetUserId)
+
+      request.completedAt = new Date()
+    } else if (status === 'completed') {
+      request.completedAt = new Date()
+    }
+
+    await request.save()
+
+    res.json({
+      success: true,
+      message: 'GDPR request updated successfully',
+      request
+    })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }

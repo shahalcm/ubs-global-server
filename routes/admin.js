@@ -65,4 +65,9 @@ router.get('/reviews', adminProtect, adminController.getReviews)
 router.patch('/reviews/:id/approve', adminProtect, adminController.approveReview)
 router.delete('/reviews/:id', adminProtect, adminController.deleteReview)
 
+// Legal Compliance & GDPR Requests
+router.put('/legal-docs/:key', adminProtect, adminController.updateLegalDoc)
+router.get('/gdpr-requests', adminProtect, adminController.getGDPRRequests)
+router.patch('/gdpr-requests/:id', adminProtect, adminController.updateGDPRRequest)
+
 module.exports = router

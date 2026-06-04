@@ -35,5 +35,20 @@ const userSchema = new mongoose.Schema({
     ref: 'Product'
   }],
   lastLogin: Date,
+  privacySettings: {
+    marketingConsent: { type: Boolean, default: false },
+    dataProcessingConsent: { type: Boolean, default: false },
+    analyticsConsent: { type: Boolean, default: false }
+  },
+  consentLogs: [{
+    consentType: { type: String, required: true },
+    status: { type: Boolean, required: true },
+    timestamp: { type: Date, default: Date.now },
+    ipAddress: String,
+    userAgent: String
+  }],
+  isDeleted: { type: Boolean, default: false },
+  deletedAt: Date
 }, { timestamps: true })
+
 module.exports = mongoose.model('User', userSchema)
