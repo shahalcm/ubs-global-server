@@ -1311,4 +1311,61 @@ exports.updateGDPRRequest = async (req, res) => {
   }
 }
 
+exports.getJobApplications = async (req, res) => {
+  try {
+    const JobApplication = require('../models/JobApplication')
+    const { page = 1, limit = 20, search } = req.query
+
+    let query = {}
+
+    if (search) {
+      query.$or = [
+        { name: new RegExp(search, 'i') },
+        { email: new RegExp(search, 'i') },
+        { phone: new RegExp(search, 'i') },
+        { experience: new RegExp(search, 'i') }
+      ]
+    }
+
+    const total = await JobApplication.countDocuments(query)
+    const applications = await JobApplication.find(query)
+      .populate('jobId', 'title images price')
+      .populate('userId', 'name email')
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+
+    res.json({
+      success: true,
+      applications,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.deleteJobApplication = async (req, res) => {
+  try {
+    const JobApplication = require('../models/JobApplication')
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid application ID' })
+    }
+    const application = await JobApplication.findByIdAndDelete(id)
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Job application not found' })
+    }
+    res.json({ success: true, message: 'Job application deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+
 
