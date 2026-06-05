@@ -12,9 +12,9 @@ const getFileUrl = (req, file) => {
   const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
   const protocol = isLocal ? req.protocol : 'https';
   const normalizedPath = file.path.replace(/\\/g, '/');
-  if (normalizedPath.includes('/uploads/products/')) {
+  if (normalizedPath.includes('uploads/products/')) {
     return `${protocol}://${host}/uploads/products/${file.filename}`;
-  } else if (normalizedPath.includes('/uploads/sellers/')) {
+  } else if (normalizedPath.includes('uploads/sellers/')) {
     return `${protocol}://${host}/uploads/sellers/${file.filename}`;
   } else {
     return `${protocol}://${host}/uploads/${file.filename}`;
@@ -132,9 +132,9 @@ exports.applyAsSeller = async (req, res) => {
 // Get seller profile
 exports.getSellerProfile = async (req, res) => {
   try {
-    let seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
+    let seller = await Seller.findOne({ userId: req.user._id, status: 'approved' }).populate('userId', 'name email avatar location')
     if (!seller) {
-      seller = await Seller.findOne({ userId: req.user._id }).sort({ createdAt: -1 })
+      seller = await Seller.findOne({ userId: req.user._id }).sort({ createdAt: -1 }).populate('userId', 'name email avatar location')
     }
     if (!seller) {
       return res.json({ success: true, seller: null })

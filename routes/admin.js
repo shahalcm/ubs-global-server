@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router()
 const adminController = require('../controllers/adminController')
 const { adminProtect } = require('../middleware/adminAuth')
-const { categoryUpload } = require('../config/cloudinary')
+const { categoryUpload, bannerUpload } = require('../config/cloudinary')
 
 // Dashboard
 router.get('/dashboard-stats', adminProtect, adminController.getDashboardStats)
@@ -20,9 +20,11 @@ router.patch('/users/:id/unblock', adminProtect, adminController.unblockUser)
 
 // Products
 router.get('/products', adminProtect, adminController.getProducts)
+router.post('/products', adminProtect, categoryUpload.array('images', 5), adminController.createProduct)
 router.patch('/products/:id/approve', adminProtect, adminController.approveProduct)
 router.patch('/products/:id/reject', adminProtect, adminController.rejectProduct)
 router.put('/products/:id', adminProtect, adminController.updateProduct)
+router.delete('/products/:id', adminProtect, adminController.deleteProduct)
 
 // Orders
 router.get('/orders', adminProtect, adminController.getOrders)
@@ -51,14 +53,16 @@ router.delete('/categories/:id', adminProtect, adminController.deleteCategory)
 
 // Banners
 router.get('/banners', adminProtect, adminController.getBanners)
-router.post('/banners', adminProtect, adminController.createBanner)
+router.post('/banners', adminProtect, bannerUpload.single('image'), adminController.createBanner)
+router.put('/banners/:id', adminProtect, bannerUpload.single('image'), adminController.updateBanner)
+router.delete('/banners/:id', adminProtect, adminController.deleteBanner)
 
 // Transactions
 router.get('/transactions', adminProtect, adminController.getTransactions)
 
 // System settings
 router.get('/settings', adminProtect, adminController.getSettings)
-router.put('/settings', adminProtect, adminController.updateSettings)
+router.put('/settings', adminProtect, categoryUpload.fields([{ name: 'logo', maxCount: 1 }, { name: 'favicon', maxCount: 1 }]), adminController.updateSettings)
 
 // Reviews
 router.get('/reviews', adminProtect, adminController.getReviews)
@@ -69,5 +73,9 @@ router.delete('/reviews/:id', adminProtect, adminController.deleteReview)
 router.put('/legal-docs/:key', adminProtect, adminController.updateLegalDoc)
 router.get('/gdpr-requests', adminProtect, adminController.getGDPRRequests)
 router.patch('/gdpr-requests/:id', adminProtect, adminController.updateGDPRRequest)
+
+// Job Applications
+router.get('/job-applications', adminProtect, adminController.getJobApplications)
+router.delete('/job-applications/:id', adminProtect, adminController.deleteJobApplication)
 
 module.exports = router

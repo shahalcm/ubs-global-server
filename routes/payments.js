@@ -10,7 +10,8 @@ const {
   sellerWithdrawal,
   adminWithdrawal,
   getSellerEarnings,
-  getAdminCommissions
+  getAdminCommissions,
+  updateWithdrawalStatus
 } = require('../controllers/paymentController')
 
 // Buyer
@@ -42,6 +43,11 @@ router.post(
   '/admin/withdraw',
   adminProtect,
   adminWithdrawal
+)
+router.patch(
+  '/admin/withdrawals/:id',
+  adminProtect,
+  updateWithdrawalStatus
 )
 
 module.exports = router

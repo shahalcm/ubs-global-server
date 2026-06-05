@@ -29,12 +29,13 @@ exports.verifyOTP = async (req, res) => {
 
 // Complete signup
 exports.signup = async (req, res) => {
-  const { name, email, password, phone } = req.body
+  const { name, email, password, phone, location } = req.body
   const hashedPassword = await bcrypt.hash(password, 12)
   const user = await User.create({
     name, email, phone,
     password: hashedPassword,
-    isVerified: true
+    isVerified: true,
+    location
   })
   const token = generateUserToken(user._id)
   res.status(201).json({ success: true, token, user })

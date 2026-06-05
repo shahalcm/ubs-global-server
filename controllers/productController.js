@@ -13,9 +13,9 @@ const getFileUrl = (req, file) => {
   const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
   const protocol = isLocal ? req.protocol : 'https';
   const normalizedPath = file.path.replace(/\\/g, '/');
-  if (normalizedPath.includes('/uploads/products/')) {
+  if (normalizedPath.includes('uploads/products/')) {
     return `${protocol}://${host}/uploads/products/${file.filename}`;
-  } else if (normalizedPath.includes('/uploads/sellers/')) {
+  } else if (normalizedPath.includes('uploads/sellers/')) {
     return `${protocol}://${host}/uploads/sellers/${file.filename}`;
   } else {
     return `${protocol}://${host}/uploads/${file.filename}`;
@@ -230,6 +230,14 @@ exports.getProducts = async (req, res) => {
             }
           })
         }
+      }
+    } else {
+      // Exclude services (Job Portal, Service Portal) from featured/general listings when category is not specified
+      const excludedCategories = await Category.find({
+        name: { $in: [/job portal/i, /service portal/i, /jobportal/i, /serviceportal/i] }
+      }).select('_id')
+      if (excludedCategories && excludedCategories.length > 0) {
+        query.category = { $nin: excludedCategories.map(c => c._id) }
       }
     }
     if (minPrice || maxPrice) {
@@ -597,7 +605,19 @@ exports.updateProduct = async (req, res) => {
   }
 }
 exports.deleteProduct = async (req, res) => {
-  res.json({ success: true, message: 'Delete product not fully implemented here yet' });
+  try {
+    const product = await Product.findById(req.params.id)
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' })
+    }
+    if (req.seller && product.sellerId.toString() !== req.seller._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this product' })
+    }
+    await Product.findByIdAndDelete(req.params.id)
+    res.json({ success: true, message: 'Product deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
 }
 exports.searchProducts = async (req, res) => {
   res.json({ success: true, products: [] });
@@ -609,7 +629,7 @@ exports.getProductsByCategory = async (req, res) => {
 // Start direct chat with product seller
 exports.startProductChat = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id)
+    const product = await Product.findById(req.params.id).populate('category')
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
@@ -623,18 +643,36 @@ exports.startProductChat = async (req, res) => {
     })
 
     if (!chatRoom) {
-      chatRoom = await ChatRoom.create({
-        buyerId: req.user._id,
-        sellerId: product.sellerId,
-        sellerModel: 'Seller',
-        productId: product._id,
-        roomName: `${req.user.name} about ${product.title}`,
-        status: 'active',
-        adminMonitoring: false, // Direct buyer-seller chat
-        lastMessage: `Inquiry about ${product.title}`,
-        lastMessageAt: new Date(),
-        lastMessageBy: 'buyer'
-      })
+      const categoryName = product.category?.name?.toLowerCase().trim() || ""
+      const isServicePortal = categoryName === "service portal" || categoryName === "serviceportal"
+
+      if (isServicePortal) {
+        chatRoom = await ChatRoom.create({
+          buyerId: req.user._id,
+          sellerId: null,
+          sellerModel: 'Seller',
+          productId: product._id,
+          roomName: `${req.user.name} × UBS Global Admin Panel`,
+          status: 'active',
+          adminMonitoring: true, // Direct buyer-admin chat
+          lastMessage: `Direct inquiry about service ${product.title}`,
+          lastMessageAt: new Date(),
+          lastMessageBy: 'buyer'
+        })
+      } else {
+        chatRoom = await ChatRoom.create({
+          buyerId: req.user._id,
+          sellerId: product.sellerId,
+          sellerModel: 'Seller',
+          productId: product._id,
+          roomName: `${req.user.name} about ${product.title}`,
+          status: 'active',
+          adminMonitoring: false, // Direct buyer-seller chat
+          lastMessage: `Inquiry about ${product.title}`,
+          lastMessageAt: new Date(),
+          lastMessageBy: 'buyer'
+        })
+      }
     }
 
     res.json({

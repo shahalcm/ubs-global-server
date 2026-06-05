@@ -20,4 +20,7 @@ const notificationSchema = new mongoose.Schema({
   isRead: { type: Boolean, default: false },
   data: mongoose.Schema.Types.Mixed,
 }, { timestamps: true })
+
+notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 })
+
 module.exports = mongoose.model('Notification', notificationSchema)

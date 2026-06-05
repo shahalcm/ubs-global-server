@@ -16,6 +16,7 @@ const { sendEmail } = require('../utils/sendEmail')
 const SystemConfig = require('../models/SystemConfig')
 const LegalDoc = require('../models/LegalDoc')
 const GDPRRequest = require('../models/GDPRRequest')
+const cache = require('../utils/cache')
 
 const buildPagination = (page, limit, total) => ({
   page,
@@ -130,7 +131,7 @@ exports.getSellers = async (req, res) => {
   }
   const total = await Seller.countDocuments(query)
   const sellers = await Seller.find(query)
-    .populate('userId', 'name email avatar')
+    .populate('userId', 'name email avatar location')
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(Number(limit))
@@ -242,9 +243,14 @@ exports.unblockUser = async (req, res) => {
 }
 
 exports.getProducts = async (req, res) => {
-  const { approvalStatus, page = 1, limit = 20, search } = req.query
+  const { approvalStatus, status, page = 1, limit = 20, search, category, categories } = req.query
   const query = {}
   if (approvalStatus) query.approvalStatus = approvalStatus
+  if (status) query.status = status
+  if (category) query.category = category
+  if (categories) {
+    query.category = { $in: categories.split(',') }
+  }
   if (search) {
     query.$or = [
       { title: new RegExp(search, 'i') },
@@ -264,6 +270,131 @@ exports.getProducts = async (req, res) => {
     products,
     pagination: buildPagination(Number(page), Number(limit), total)
   })
+}
+
+exports.createProduct = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      sku,
+      category,
+      subcategory,
+      price,
+      comparePrice,
+      stock = 1,
+      status = 'active',
+      approvalStatus = 'approved',
+      sellerId
+    } = req.body
+
+    if (!title || !description || !price || !category) {
+      return res.status(400).json({ success: false, message: 'Title, description, price, and category are required' })
+    }
+
+    let resolvedSellerId = sellerId
+    if (!resolvedSellerId || !mongoose.Types.ObjectId.isValid(resolvedSellerId)) {
+      const firstSeller = await Seller.findOne({ status: 'approved' })
+      if (firstSeller) {
+        resolvedSellerId = firstSeller._id
+      } else {
+        const anySeller = await Seller.findOne()
+        if (anySeller) {
+          resolvedSellerId = anySeller._id
+        } else {
+          const adminUser = await User.findOne({ role: 'admin' }) || await User.findOne()
+          if (!adminUser) {
+            return res.status(400).json({ success: false, message: 'No admin user found to assign listing' })
+          }
+          const defaultSeller = await Seller.create({
+            userId: adminUser._id,
+            shopName: 'UBS Global Admin',
+            ownerName: 'Admin',
+            email: adminUser.email,
+            phone: '0000000000',
+            address: { street: 'Admin Headquarters' },
+            businessType: 'individual',
+            status: 'approved'
+          })
+          resolvedSellerId = defaultSeller._id
+        }
+      }
+    }
+
+    let categoryId = category
+    if (category && !mongoose.Types.ObjectId.isValid(category)) {
+      const categoryDoc = await Category.findOne({
+        $or: [
+          { slug: category.toLowerCase() },
+          { name: { $regex: new RegExp(`^${category}$`, 'i') } }
+        ]
+      })
+      if (categoryDoc) {
+        categoryId = categoryDoc._id
+      } else {
+        const newCat = await Category.create({
+          name: category.charAt(0).toUpperCase() + category.slice(1),
+          slug: category.toLowerCase(),
+          isActive: true
+        })
+        categoryId = newCat._id
+      }
+    }
+
+    let images = []
+    if (req.files && req.files.length > 0) {
+      images = req.files.map(file => {
+        if (file.path && (file.path.startsWith('http://') || file.path.startsWith('https://'))) {
+          return file.path;
+        }
+        const host = req.get('host') || '';
+        const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
+        const protocol = isLocal ? req.protocol : 'https';
+        return `${protocol}://${host}/uploads/products/${file.filename}`;
+      })
+    } else {
+      images = ['https://via.placeholder.com/400?text=Job+or+Service']
+    }
+
+    const product = await Product.create({
+      sellerId: resolvedSellerId,
+      title,
+      description,
+      sku: sku || `JS-${Date.now()}`,
+      category: categoryId,
+      subcategory,
+      price: Number(price),
+      comparePrice: comparePrice ? Number(comparePrice) : undefined,
+      stock: Number(stock),
+      images,
+      status,
+      approvalStatus
+    })
+
+    const populatedProduct = await Product.findById(product._id)
+      .populate('category', 'name')
+      .populate('sellerId', 'shopName email')
+
+    res.status(201).json({ success: true, message: 'Listing created successfully', product: populatedProduct })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.deleteProduct = async (req, res) => {
+  try {
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id' })
+    }
+    const product = await Product.findByIdAndDelete(id)
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' })
+    }
+    res.json({ success: true, message: 'Product deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
 }
 
 exports.approveProduct = async (req, res) => {
@@ -635,6 +766,7 @@ exports.createCategory = async (req, res) => {
     isActive: isActive === 'false' ? false : (isActive !== false),
     sortOrder: Number(sortOrder) || 0
   })
+  await cache.del('categories:all')
   res.status(201).json({ success: true, category })
 }
 
@@ -667,6 +799,7 @@ exports.updateCategory = async (req, res) => {
   if (!category) {
     return res.status(404).json({ success: false, message: 'Category not found' })
   }
+  await cache.del('categories:all')
   res.json({ success: true, category })
 }
 
@@ -679,6 +812,7 @@ exports.deleteCategory = async (req, res) => {
   if (!category) {
     return res.status(404).json({ success: false, message: 'Category not found' })
   }
+  await cache.del('categories:all')
   res.json({ success: true, message: 'Category deleted' })
 }
 
@@ -688,18 +822,85 @@ exports.getBanners = async (req, res) => {
 }
 
 exports.createBanner = async (req, res) => {
-  const { title, image, linkUrl, position, isActive, startDate, endDate, sortOrder } = req.body
+  const { title, linkUrl, position, isActive, startDate, endDate, sortOrder } = req.body
+  let image = req.body.image
+
+  if (req.file) {
+    if (req.file.path && req.file.path.startsWith('http')) {
+      image = req.file.path
+    } else {
+      const host = req.get('host') || '';
+      const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
+      const protocol = isLocal ? req.protocol : 'https';
+      image = `${protocol}://${host}/uploads/banners/${req.file.filename}`
+    }
+  }
+
   const banner = await Banner.create({
     title,
     image,
     linkUrl,
     position: position || 'top',
-    isActive: isActive !== false,
+    isActive: isActive === 'false' ? false : (isActive !== false),
     startDate: startDate ? new Date(startDate) : null,
     endDate: endDate ? new Date(endDate) : null,
     sortOrder: Number(sortOrder) || 0
   })
+  await cache.del('banners:active')
   res.status(201).json({ success: true, banner })
+}
+
+exports.updateBanner = async (req, res) => {
+  const { id } = req.params
+  const updates = { ...req.body }
+
+  if (req.file) {
+    if (req.file.path && req.file.path.startsWith('http')) {
+      updates.image = req.file.path
+    } else {
+      const host = req.get('host') || '';
+      const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.');
+      const protocol = isLocal ? req.protocol : 'https';
+      updates.image = `${protocol}://${host}/uploads/banners/${req.file.filename}`
+    }
+  }
+
+  if (updates.isActive !== undefined) {
+    updates.isActive = updates.isActive === 'true' || updates.isActive === true
+  }
+  if (updates.sortOrder !== undefined) {
+    updates.sortOrder = Number(updates.sortOrder) || 0
+  }
+  if (updates.startDate !== undefined) {
+    updates.startDate = updates.startDate ? new Date(updates.startDate) : null
+  }
+  if (updates.endDate !== undefined) {
+    updates.endDate = updates.endDate ? new Date(updates.endDate) : null
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid banner id' })
+  }
+
+  const banner = await Banner.findByIdAndUpdate(id, updates, { new: true })
+  if (!banner) {
+    return res.status(404).json({ success: false, message: 'Banner not found' })
+  }
+  await cache.del('banners:active')
+  res.json({ success: true, banner })
+}
+
+exports.deleteBanner = async (req, res) => {
+  const { id } = req.params
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid banner id' })
+  }
+  const banner = await Banner.findByIdAndDelete(id)
+  if (!banner) {
+    return res.status(404).json({ success: false, message: 'Banner not found' })
+  }
+  await cache.del('banners:active')
+  res.json({ success: true, message: 'Banner deleted' })
 }
 
 exports.getTransactions = async (req, res) => {
@@ -735,8 +936,44 @@ exports.getSettings = async (req, res) => {
       // Create default settings if none exist
       config = await SystemConfig.create({
         requireJobApproval: true,
-        requireServiceApproval: true
+        requireServiceApproval: true,
+        supportEmail: 'ops@ubs-global.com',
+        contactPhone: '+1 (555) 098-7654',
+        maintenanceMode: false,
+        stripeEnabled: true,
+        stripePublicKey: 'pk_test_51O2a8fL99fGgh9987',
+        stripeSecretKey: 'sk_test_51O2a8fL99fGgh9987sk_secret_value',
+        stripeMode: 'test',
+        paypalEnabled: false,
+        paypalClientId: '',
+        paypalSecret: '',
+        paypalMode: 'sandbox',
+        codEnabled: true,
+        codHandlingFee: false,
+        shippingRate: 10,
+        freeShippingThreshold: 150,
+        expressShippingRate: 25,
+        defaultLanguage: 'en',
+        enabledLanguages: ['en', 'es', 'fr'],
+        twoFactorMandatory: false,
+        sessionTimeout: 30,
+        ipWhitelist: '192.168.1.1, 10.0.0.45',
+        emailAlerts: true,
+        smsNotifications: false,
+        pushNotifications: true,
+        apiKeys: [
+          { name: 'ERP_Production_v2', key: 'ubs_prod_api_key_88921a99f', status: 'active', lastUsed: new Date(Date.now() - 3600000 * 6) },
+          { name: 'Mobile_App_iOS', key: 'ubs_ios_api_key_21123bbb9', status: 'active', lastUsed: new Date(Date.now() - 3600000 * 24 * 2) },
+          { name: 'Legacy_Tracker_Old', key: 'ubs_legacy_api_key_00291a11a', status: 'revoked', lastUsed: null }
+        ]
       })
+    } else if (!config.apiKeys || config.apiKeys.length === 0) {
+      config.apiKeys = [
+        { name: 'ERP_Production_v2', key: 'ubs_prod_api_key_88921a99f', status: 'active', lastUsed: new Date(Date.now() - 3600000 * 6) },
+        { name: 'Mobile_App_iOS', key: 'ubs_ios_api_key_21123bbb9', status: 'active', lastUsed: new Date(Date.now() - 3600000 * 24 * 2) },
+        { name: 'Legacy_Tracker_Old', key: 'ubs_legacy_api_key_00291a11a', status: 'revoked', lastUsed: null }
+      ]
+      await config.save()
     }
     res.json({ success: true, settings: config })
   } catch (error) {
@@ -746,14 +983,91 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   try {
-    const { requireJobApproval, requireServiceApproval } = req.body
     let config = await SystemConfig.findOne()
     if (!config) {
       config = new SystemConfig()
     }
-    if (requireJobApproval !== undefined) config.requireJobApproval = requireJobApproval
-    if (requireServiceApproval !== undefined) config.requireServiceApproval = requireServiceApproval
-    
+
+    // Process logo and favicon upload fields
+    if (req.files) {
+      if (req.files.logo && req.files.logo[0]) {
+        const file = req.files.logo[0]
+        if (file.path && file.path.startsWith('http')) {
+          config.logoUrl = file.path
+        } else {
+          const host = req.get('host') || ''
+          const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.')
+          const protocol = isLocal ? req.protocol : 'https'
+          config.logoUrl = `${protocol}://${host}/uploads/categories/${file.filename}`
+        }
+      }
+      if (req.files.favicon && req.files.favicon[0]) {
+        const file = req.files.favicon[0]
+        if (file.path && file.path.startsWith('http')) {
+          config.faviconUrl = file.path
+        } else {
+          const host = req.get('host') || ''
+          const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.') || host.includes('10.')
+          const protocol = isLocal ? req.protocol : 'https'
+          config.faviconUrl = `${protocol}://${host}/uploads/categories/${file.filename}`
+        }
+      }
+    }
+
+    // Define and parse field mappings
+    const booleanFields = [
+      'requireJobApproval', 'requireServiceApproval', 'maintenanceMode',
+      'stripeEnabled', 'paypalEnabled', 'codEnabled', 'codHandlingFee',
+      'twoFactorMandatory', 'emailAlerts', 'smsNotifications', 'pushNotifications'
+    ]
+    const numberFields = [
+      'shippingRate', 'freeShippingThreshold', 'expressShippingRate', 'sessionTimeout'
+    ]
+    const stringFields = [
+      'supportEmail', 'contactPhone', 'logoUrl', 'faviconUrl',
+      'stripePublicKey', 'stripeSecretKey', 'stripeMode',
+      'paypalClientId', 'paypalSecret', 'paypalMode',
+      'defaultLanguage', 'ipWhitelist'
+    ]
+
+    booleanFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        config[field] = req.body[field] === 'true' || req.body[field] === true
+      }
+    })
+
+    numberFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        config[field] = Number(req.body[field])
+      }
+    })
+
+    stringFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        config[field] = req.body[field]
+      }
+    })
+
+    if (req.body.enabledLanguages !== undefined) {
+      try {
+        config.enabledLanguages = typeof req.body.enabledLanguages === 'string'
+          ? JSON.parse(req.body.enabledLanguages)
+          : req.body.enabledLanguages
+      } catch (e) {
+        console.error('Failed to parse enabledLanguages:', e)
+      }
+    }
+
+    if (req.body.apiKeys !== undefined) {
+      try {
+        config.apiKeys = typeof req.body.apiKeys === 'string'
+          ? JSON.parse(req.body.apiKeys)
+          : req.body.apiKeys
+      } catch (e) {
+        console.error('Failed to parse apiKeys:', e)
+      }
+    }
+
     await config.save()
     res.json({ success: true, message: 'Settings updated successfully', settings: config })
   } catch (error) {
@@ -772,11 +1086,17 @@ exports.updateProduct = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
     
-    const { title, description, price, approvalStatus } = req.body
+    const { title, description, price, subcategory, status, approvalStatus } = req.body
     if (title !== undefined) product.title = title.trim()
     if (description !== undefined) product.description = description.trim()
     if (price !== undefined) product.price = Number(price)
-    product.approvalStatus = approvalStatus !== undefined ? approvalStatus : 'approved'
+    if (subcategory !== undefined) product.subcategory = subcategory.trim()
+    if (status !== undefined) product.status = status
+    if (approvalStatus !== undefined) {
+      product.approvalStatus = approvalStatus
+    } else if (product.approvalStatus === undefined) {
+      product.approvalStatus = 'approved'
+    }
 
     await product.save()
 

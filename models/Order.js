@@ -108,4 +108,9 @@ orderSchema.pre('save', async function(next) {
   next()
 })
 
+orderSchema.index({ buyerId: 1 })
+orderSchema.index({ sellerId: 1 })
+orderSchema.index({ orderStatus: 1 })
+orderSchema.index({ createdAt: -1 })
+
 module.exports = mongoose.model('Order', orderSchema)

@@ -404,9 +404,9 @@ exports.getAdminCommissions = async (req, res) => {
       (sum, t) => sum + t.adminEarnings, 0
     )
 
-    const withdrawalRequests = await Withdrawal.find({
-      status: 'pending'
-    }).populate('sellerId', 'shopName')
+    const withdrawalRequests = await Withdrawal.find()
+      .populate('sellerId', 'shopName')
+      .sort({ createdAt: -1 })
 
     res.json({
       success: true,
@@ -454,5 +454,75 @@ exports.getPaymentHistory = async (req, res) => {
     res.json({ success: true, transactions });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+exports.updateWithdrawalStatus = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { status, adminNote } = req.body
+
+    if (!['completed', 'rejected', 'processing'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status'
+      })
+    }
+
+    const withdrawal = await Withdrawal.findById(id)
+    if (!withdrawal) {
+      return res.status(404).json({
+        success: false,
+        message: 'Withdrawal request not found'
+      })
+    }
+
+    if (withdrawal.status !== 'pending' && withdrawal.status !== 'processing') {
+      return res.status(400).json({
+        success: false,
+        message: 'Withdrawal request is already processed'
+      })
+    }
+
+    if (status === 'completed' && withdrawal.type === 'seller') {
+      const seller = await Seller.findById(withdrawal.sellerId)
+      if (!seller) {
+        return res.status(404).json({
+          success: false,
+          message: 'Seller not found'
+        })
+      }
+
+      if (seller.pendingWithdrawal < withdrawal.amount) {
+        return res.status(400).json({
+          success: false,
+          message: 'Seller has insufficient pending balance to complete this withdrawal'
+        })
+      }
+
+      // Deduct from pending and move to withdrawn
+      seller.pendingWithdrawal -= withdrawal.amount
+      seller.withdrawnAmount = (seller.withdrawnAmount || 0) + withdrawal.amount
+      await seller.save()
+    }
+
+    withdrawal.status = status
+    withdrawal.adminNote = adminNote || ''
+    withdrawal.processedAt = new Date()
+    if (status === 'completed') {
+      withdrawal.completedAt = new Date()
+    }
+    await withdrawal.save()
+
+    res.json({
+      success: true,
+      message: `Withdrawal request marked as ${status} successfully`,
+      withdrawal
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    })
   }
 }

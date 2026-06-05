@@ -30,6 +30,14 @@ const userSchema = new mongoose.Schema({
     country: String,
     zipCode: String
   },
+  location: {
+    latitude: Number,
+    longitude: Number,
+    city: String,
+    state: String,
+    country: String,
+    fullAddress: String
+  },
   wishlist: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product'
@@ -50,5 +58,10 @@ const userSchema = new mongoose.Schema({
   isDeleted: { type: Boolean, default: false },
   deletedAt: Date
 }, { timestamps: true })
+
+userSchema.index({ email: 1, isDeleted: 1 })
+userSchema.index({ phone: 1, isDeleted: 1 })
+userSchema.index({ role: 1 })
+userSchema.index({ createdAt: -1 })
 
 module.exports = mongoose.model('User', userSchema)

@@ -8,6 +8,8 @@ const { avatarUpload } = require('../config/cloudinary')
 router.get('/profile', protect, userController.getProfile)
 router.patch('/profile', protect, userController.updateProfile)
 router.patch('/avatar', protect, avatarUpload.single('avatar'), userController.updateAvatar)
+router.get('/location', protect, userController.getLocation)
+router.put('/location', protect, userController.updateLocation)
 
 // Account and GDPR routes
 router.delete('/delete-account', protect, userController.deleteAccount)

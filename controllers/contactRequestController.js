@@ -21,13 +21,15 @@ exports.createRequest = async (req, res) => {
       isBulkOrder
     } = req.body
 
-    if (!mongoose.Types.ObjectId.isValid(sellerId)) {
-      return res.status(400).json({ success: false, message: 'Invalid seller id' })
-    }
-
-    const seller = await Seller.findById(sellerId)
-    if (!seller) {
-      return res.status(404).json({ success: false, message: 'Seller not found' })
+    let seller = null
+    if (sellerId) {
+      if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+        return res.status(400).json({ success: false, message: 'Invalid seller id' })
+      }
+      seller = await Seller.findById(sellerId)
+      if (!seller) {
+        return res.status(404).json({ success: false, message: 'Seller not found' })
+      }
     }
 
     const product = productId && mongoose.Types.ObjectId.isValid(productId)
@@ -39,17 +41,21 @@ exports.createRequest = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Buyer not found' })
     }
 
+    const targetShopName = seller ? seller.shopName : 'UBS Global Admin Panel'
+    const targetOwnerName = seller ? seller.ownerName : 'Admin'
+    const targetImage = product?.images?.[0] || (seller ? seller.shopLogo : 'https://images.unsplash.com/photo-1557200134-90327ee9fafa?w=100&q=80')
+
     const request = await ContactRequest.create({
       buyerId: req.user.id,
       buyerName: buyer.name,
       buyerEmail: buyer.email,
       buyerPhone: buyer.phone,
-      sellerId,
-      sellerName: seller.ownerName,
-      sellerShop: seller.shopName,
-      productId,
+      sellerId: sellerId || null,
+      sellerName: targetOwnerName,
+      sellerShop: targetShopName,
+      productId: productId || null,
       productName: product?.title,
-      productImage: product?.images?.[0] || seller.shopLogo,
+      productImage: targetImage,
       subject,
       message,
       requestType,
@@ -63,7 +69,7 @@ exports.createRequest = async (req, res) => {
       global.io.to('admin-room').emit('newContactRequest', {
         requestId: request._id,
         buyerName: buyer.name,
-        sellerShop: seller.shopName,
+        sellerShop: targetShopName,
         productName: product?.title || request.productName,
         isUrgent: Boolean(isUrgent)
       })
@@ -71,21 +77,27 @@ exports.createRequest = async (req, res) => {
 
     await createInAppNotification({
       userType: 'Admin',
-      title: 'New contact request',
-      message: `${buyer.name} requested to connect with ${seller.shopName}`,
+      title: seller ? 'New contact request' : 'New support inquiry',
+      message: seller 
+        ? `${buyer.name} requested to connect with ${seller.shopName}`
+        : `${buyer.name} sent an inquiry to UBS Admin Panel`,
       type: 'contact_request',
       data: { requestId: request._id }
     })
 
     await sendEmail({
       to: process.env.ADMIN_EMAIL,
-      subject: 'New Buyer-Seller Contact Request',
-      html: `<p><strong>${buyer.name}</strong> wants to contact <strong>${seller.shopName}</strong>.</p><p>Subject: ${subject}</p><p>Message: ${message}</p>`
+      subject: seller ? 'New Buyer-Seller Contact Request' : 'New Support Inquiry to Admin Panel',
+      html: seller 
+        ? `<p><strong>${buyer.name}</strong> wants to contact <strong>${seller.shopName}</strong>.</p><p>Subject: ${subject}</p><p>Message: ${message}</p>`
+        : `<p><strong>${buyer.name}</strong> sent an inquiry regarding <strong>${product?.title || 'Service Portal'}</strong>.</p><p>Subject: ${subject}</p><p>Message: ${message}</p>`
     })
 
     res.status(201).json({
       success: true,
-      message: 'Request sent! Admin will review and connect you shortly.',
+      message: seller 
+        ? 'Request sent! Admin will review and connect you shortly.'
+        : 'Inquiry sent! Admin will review and get in touch shortly.',
       request
     })
   } catch (error) {

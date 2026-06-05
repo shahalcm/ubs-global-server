@@ -48,8 +48,8 @@ const io = new Server(server, {
     credentials: true
   },
   transports: ['polling', 'websocket'], // Start with polling for compatibility, upgrade to websocket
-  pingTimeout: 30000,                  // Close sockets after 30s of ping inactivity (better for cloud proxies)
-  pingInterval: 10000                  // Heartbeat check every 10s to keep connection alive on Railway load balancer
+  pingTimeout: 60000,
+  pingInterval: 25000
 })
 
 // Make io globally accessible
@@ -152,6 +152,7 @@ app.use('/api/notifications', require('./routes/notifications'))
 app.use('/api/reviews', require('./routes/reviews'))
 app.use('/api/banners', require('./routes/banners'))
 app.use('/api/admin', require('./routes/admin'))
+app.use('/api/job-applications', require('./routes/jobApplications'))
 app.use('/api/properties', require('./routes/properties'))
 app.use('/api/bot-config', require('./routes/botConfig'))
 app.use('/api/calls', require('./routes/callRoutes'))

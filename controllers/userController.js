@@ -585,3 +585,38 @@ For deletion inquiries, contact:
     res.status(500).json({ success: false, message: error.message })
   }
 }
+
+// Get User Location
+exports.getLocation = async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      location: req.user.location || null
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Update User Location
+exports.updateLocation = async (req, res) => {
+  try {
+    const { latitude, longitude, city, state, country, fullAddress } = req.body
+    req.user.location = {
+      latitude: latitude !== undefined ? Number(latitude) : undefined,
+      longitude: longitude !== undefined ? Number(longitude) : undefined,
+      city: city || undefined,
+      state: state || undefined,
+      country: country || undefined,
+      fullAddress: fullAddress || undefined
+    }
+    await req.user.save()
+    res.json({
+      success: true,
+      message: 'Location updated successfully',
+      user: req.user
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}

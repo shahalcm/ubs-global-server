@@ -51,6 +51,7 @@ let productStorage
 let sellerStorage
 let categoryStorage
 let avatarStorage
+let bannerStorage
 
 if (isCloudinaryConfigured()) {
   const url = process.env.CLOUDINARY_URL
@@ -93,7 +94,7 @@ if (isCloudinaryConfigured()) {
       folder: 'ubsglobal/sellers',
       allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
       transformation: [
-        { width: 400, height: 400, crop: 'fill' }
+        { width: 400, height: 400, crop: 'fill', quality: 'auto', fetch_format: 'auto' }
       ]
     })
   })
@@ -116,9 +117,21 @@ if (isCloudinaryConfigured()) {
       folder: 'ubsglobal/avatars',
       allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
       transformation: [
-        { width: 300, height: 300, crop: 'fill' }
+        { width: 300, height: 300, crop: 'fill', quality: 'auto', fetch_format: 'auto' }
       ],
       public_id: `avatar_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    })
+  })
+
+  bannerStorage = new CloudinaryStorage({
+    cloudinary,
+    params: async (req, file) => ({
+      folder: 'ubsglobal/banners',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [
+        { width: 1200, height: 600, crop: 'limit', quality: 'auto', fetch_format: 'auto' }
+      ],
+      public_id: `banner_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     })
   })
 } else {
@@ -178,6 +191,20 @@ if (isCloudinaryConfigured()) {
       cb(null, `avatar_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`)
     }
   })
+
+  bannerStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      const dir = path.join(__dirname, '../uploads/banners')
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      cb(null, dir)
+    },
+    filename: function (req, file, cb) {
+      const ext = file.originalname ? path.extname(file.originalname) : '.jpg'
+      cb(null, `banner_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`)
+    }
+  })
 }
 
 const productUpload = multer({
@@ -221,11 +248,64 @@ const avatarUpload = multer({
   }
 })
 
+const bannerUpload = multer({
+  storage: bannerStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only images allowed'), false)
+    }
+  }
+})
+
+let resumeStorage
+
+if (isCloudinaryConfigured()) {
+  resumeStorage = new CloudinaryStorage({
+    cloudinary,
+    params: async (req, file) => ({
+      folder: 'ubsglobal/resumes',
+      allowed_formats: ['pdf'],
+      public_id: `resume_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    })
+  })
+} else {
+  resumeStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      const dir = path.join(__dirname, '../uploads/resumes')
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      cb(null, dir)
+    },
+    filename: function (req, file, cb) {
+      const ext = file.originalname ? path.extname(file.originalname) : '.pdf'
+      cb(null, `resume_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`)
+    }
+  })
+}
+
+const resumeUpload = multer({
+  storage: resumeStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true)
+    } else {
+      cb(new Error('Only PDF resumes allowed'), false)
+    }
+  }
+})
+
 module.exports = {
   cloudinary,
   productUpload,
   sellerUpload,
   categoryUpload,
   avatarUpload,
+  bannerUpload,
+  resumeUpload,
   isCloudinaryConfigured
 }
