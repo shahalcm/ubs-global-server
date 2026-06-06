@@ -11,6 +11,7 @@ router.post('/apply', protect, upload.fields([
 
 // Profile
 router.get('/profile', protect, sellerController.getSellerProfile);
+router.put('/profile', protect, sellerController.updateSellerProfile);
 
 // Dashboard stats
 router.get('/dashboard-stats', protect, sellerController.getDashboardStats);

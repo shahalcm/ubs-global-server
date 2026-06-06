@@ -76,6 +76,7 @@ router.patch('/gdpr-requests/:id', adminProtect, adminController.updateGDPRReque
 
 // Job Applications
 router.get('/job-applications', adminProtect, adminController.getJobApplications)
+router.get('/job-applications/:id/download-cv', adminProtect, adminController.downloadJobApplicationCV)
 router.delete('/job-applications/:id', adminProtect, adminController.deleteJobApplication)
 
 module.exports = router

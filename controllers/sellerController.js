@@ -64,10 +64,10 @@ const getDateLabels = (period) => {
   } else if (period === 'month') {
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
     for (let i = 1; i <= Math.min(daysInMonth, 14); i++) {
-      labels.push(`Day ${i}`)
+      labels.push(`${i}`)
     }
   } else if (period === 'year') {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const months = ['Ja', 'Fe', 'Ma', 'Ap', 'My', 'Jn', 'Jl', 'Au', 'Se', 'Oc', 'No', 'De']
     for (let i = 0; i < 12; i++) {
       labels.push(months[i])
     }
@@ -390,4 +390,43 @@ exports.getRecentOrders = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error fetching orders' })
   }
 }
+
+// Update seller profile
+exports.updateSellerProfile = async (req, res) => {
+  try {
+    let seller = await Seller.findOne({ userId: req.user._id })
+    if (!seller) {
+      return res.status(404).json({ success: false, message: 'Seller profile not found' })
+    }
+
+    const { shopName, description, phone, address, businessType } = req.body
+
+    if (shopName !== undefined) seller.shopName = shopName
+    if (description !== undefined) seller.description = description
+    if (phone !== undefined) seller.phone = phone
+    if (businessType !== undefined) seller.businessType = businessType
+    if (address !== undefined) {
+      if (typeof address === 'object') {
+        seller.address = {
+          ...seller.address,
+          ...address
+        }
+      } else {
+        seller.address.street = address
+      }
+    }
+
+    await seller.save()
+
+    res.json({
+      success: true,
+      message: 'Seller profile updated successfully',
+      seller
+    })
+  } catch (error) {
+    console.error('Update seller profile error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
 

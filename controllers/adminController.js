@@ -1367,5 +1367,87 @@ exports.deleteJobApplication = async (req, res) => {
   }
 }
 
+exports.downloadJobApplicationCV = async (req, res) => {
+  try {
+    const JobApplication = require('../models/JobApplication')
+    const { id } = req.params
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid application ID' })
+    }
+    const application = await JobApplication.findById(id)
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Job application not found' })
+    }
+    if (!application.cvUrl) {
+      return res.status(400).json({ success: false, message: 'No CV uploaded for this application' })
+    }
+
+    const cvUrl = application.cvUrl
+    const fs = require('fs')
+    const path = require('path')
+    const filename = `${application.name.replace(/[^a-zA-Z0-9]/g, '_')}_CV.pdf`
+
+    // Set download headers
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.setHeader('Content-Type', 'application/pdf')
+
+    // If it's a remote URL
+    if (cvUrl.startsWith('http://') || cvUrl.startsWith('https://')) {
+      // Check if it's on localhost/same server
+      const host = req.get('host')
+      if (cvUrl.includes(host)) {
+        // Local file served via HTTP, map it to local disk
+        const parts = cvUrl.split('/uploads/')
+        if (parts.length > 1) {
+          const relativePath = parts[1]
+          const localPath = path.join(__dirname, '../uploads', relativePath)
+          if (fs.existsSync(localPath)) {
+            return res.download(localPath, filename)
+          }
+        }
+      }
+
+      // Fetch from remote URL and pipe to client
+      const https = require('https')
+      const http = require('http')
+
+      const downloadFile = (fileUrl) => {
+        const client = fileUrl.startsWith('https') ? https : http
+        client.get(fileUrl, (remoteResponse) => {
+          if (remoteResponse.statusCode === 301 || remoteResponse.statusCode === 302) {
+            const redirectUrl = remoteResponse.headers.location
+            if (redirectUrl) {
+              return downloadFile(redirectUrl)
+            }
+          }
+          if (remoteResponse.statusCode >= 400) {
+            return res.status(remoteResponse.statusCode).json({
+              success: false,
+              message: `Failed to fetch CV from remote storage (Status: ${remoteResponse.statusCode})`
+            })
+          }
+          remoteResponse.pipe(res)
+        }).on('error', (err) => {
+          console.error('Remote fetch error:', err)
+          res.status(500).json({ success: false, message: 'Failed to download CV from remote storage: ' + err.message })
+        })
+      }
+      downloadFile(cvUrl)
+    } else {
+      // Local path
+      const localPath = path.isAbsolute(cvUrl) ? cvUrl : path.join(__dirname, '..', cvUrl)
+      if (fs.existsSync(localPath)) {
+        return res.download(localPath, filename)
+      } else {
+        return res.status(404).json({ success: false, message: 'CV file not found on disk' })
+      }
+    }
+  } catch (error) {
+    console.error('Error in downloadJobApplicationCV:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+
 
 

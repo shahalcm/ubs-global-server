@@ -10,6 +10,7 @@ router.patch('/profile', protect, userController.updateProfile)
 router.patch('/avatar', protect, avatarUpload.single('avatar'), userController.updateAvatar)
 router.get('/location', protect, userController.getLocation)
 router.put('/location', protect, userController.updateLocation)
+router.patch('/change-password', protect, userController.changePassword)
 
 // Account and GDPR routes
 router.delete('/delete-account', protect, userController.deleteAccount)

@@ -27,7 +27,7 @@ To provide a secure and comprehensive marketplace experience, we collect the fol
 3. HOW WE USE YOUR INFORMATION
 We process your personal data under lawful bases (including contract performance, legal compliance, and legitimate interests) for the following purposes:
 • Delivering Core Services: To facilitate buyer-seller interactions, order placement, real estate listings, job postings, and service bookings.
-• Processing Secure Payments: To transmit transaction details to Razorpay to verify and authorize international payments in USD.
+• Processing Secure Payments: To transmit transaction details to Razorpay to verify and authorize international payments in USD. This includes calculating and deducting the 3% platform commission on successful vendor sales.
 • User Verification: To send secure One-Time Passwords (OTPs) via Twilio to verify phone numbers and maintain account security.
 • Personalization: To display customized product recommendations, location-relevant listings, and personalized content.
 • AI Chatbot Responses: To analyze chat input data processed by the Anthropic Claude AI framework to deliver intelligent automated assistance and support responses.
