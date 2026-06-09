@@ -2,15 +2,21 @@ const express = require('express');
 const router = express.Router();
 const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
+const Seller = require('../models/Seller');
 const { protect } = require('../middleware/auth');
 
 router.get('/', protect, async (req, res) => {
   try {
+    const seller = await Seller.findOne({ userId: req.user._id });
+    const orConditions = [
+      { buyerId: req.user._id },
+      { sellerId: req.user._id }
+    ];
+    if (seller) {
+      orConditions.push({ sellerId: seller._id });
+    }
     const rooms = await ChatRoom.find({
-      $or: [
-        { buyerId: req.user._id },
-        { sellerId: req.user._id }
-      ]
+      $or: orConditions
     });
     const roomIds = rooms.map(r => r._id);
     const messages = await Message.find({ chatRoomId: { $in: roomIds }, isDeleted: false })

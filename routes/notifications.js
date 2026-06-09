@@ -1,11 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const Notification = require('../models/Notification');
+const Seller = require('../models/Seller');
 const { protect } = require('../middleware/auth');
 
 router.get('/', protect, async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user._id })
+    const seller = await Seller.findOne({ userId: req.user._id });
+    const userIds = [req.user._id];
+    if (seller) {
+      userIds.push(seller._id);
+    }
+    const notifications = await Notification.find({ userId: { $in: userIds } })
       .sort({ createdAt: -1 })
       .limit(50);
     const mapped = notifications.map(n => ({
@@ -21,8 +27,13 @@ router.get('/', protect, async (req, res) => {
 // Mark all as read
 router.patch('/mark-all-read', protect, async (req, res) => {
   try {
+    const seller = await Seller.findOne({ userId: req.user._id });
+    const userIds = [req.user._id];
+    if (seller) {
+      userIds.push(seller._id);
+    }
     await Notification.updateMany(
-      { userId: req.user._id, isRead: false },
+      { userId: { $in: userIds }, isRead: false },
       { $set: { isRead: true } }
     );
     res.json({ success: true, message: 'All notifications marked as read' });
@@ -34,8 +45,13 @@ router.patch('/mark-all-read', protect, async (req, res) => {
 // Mark single notification as read
 router.patch('/:id/read', protect, async (req, res) => {
   try {
+    const seller = await Seller.findOne({ userId: req.user._id });
+    const userIds = [req.user._id];
+    if (seller) {
+      userIds.push(seller._id);
+    }
     const notification = await Notification.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user._id },
+      { _id: req.params.id, userId: { $in: userIds } },
       { $set: { isRead: true } },
       { new: true }
     );

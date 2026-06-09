@@ -445,7 +445,7 @@ exports.getSellerPublicProducts = async (req, res) => {
     const seller = await Seller.findById(
       req.params.sellerId
     ).select(
-      `shopName shopLogo rating totalReviews isVerified businessType description`
+      `shopName shopLogo rating totalReviews isVerified businessType description ownerName`
     )
 
     res.json({ success: true, products, seller })
@@ -635,18 +635,25 @@ exports.startProductChat = async (req, res) => {
     }
 
     const ChatRoom = require('../models/ChatRoom')
+    const categoryName = product.category?.name?.toLowerCase().trim() || ""
+    const isServicePortal = categoryName === "service portal" || categoryName === "serviceportal"
 
-    // Check if chat room already exists for this buyer and this product
-    let chatRoom = await ChatRoom.findOne({
-      productId: product._id,
-      buyerId: req.user._id
-    })
+    let chatRoom = null
 
-    if (!chatRoom) {
-      const categoryName = product.category?.name?.toLowerCase().trim() || ""
-      const isServicePortal = categoryName === "service portal" || categoryName === "serviceportal"
+    if (isServicePortal) {
+      chatRoom = await ChatRoom.findOne({
+        buyerId: req.user._id,
+        sellerId: null
+      })
 
-      if (isServicePortal) {
+      if (chatRoom) {
+        chatRoom.productId = product._id
+        chatRoom.roomName = `${req.user.name} × UBS Global Admin Panel`
+        chatRoom.lastMessage = `Direct inquiry about service ${product.title}`
+        chatRoom.lastMessageAt = new Date()
+        chatRoom.lastMessageBy = 'buyer'
+        await chatRoom.save()
+      } else {
         chatRoom = await ChatRoom.create({
           buyerId: req.user._id,
           sellerId: null,
@@ -659,6 +666,20 @@ exports.startProductChat = async (req, res) => {
           lastMessageAt: new Date(),
           lastMessageBy: 'buyer'
         })
+      }
+    } else {
+      chatRoom = await ChatRoom.findOne({
+        buyerId: req.user._id,
+        sellerId: product.sellerId
+      })
+
+      if (chatRoom) {
+        chatRoom.productId = product._id
+        chatRoom.roomName = `${req.user.name} about ${product.title}`
+        chatRoom.lastMessage = `Inquiry about ${product.title}`
+        chatRoom.lastMessageAt = new Date()
+        chatRoom.lastMessageBy = 'buyer'
+        await chatRoom.save()
       } else {
         chatRoom = await ChatRoom.create({
           buyerId: req.user._id,
@@ -667,7 +688,7 @@ exports.startProductChat = async (req, res) => {
           productId: product._id,
           roomName: `${req.user.name} about ${product.title}`,
           status: 'active',
-          adminMonitoring: false, // Direct buyer-seller chat
+          adminMonitoring: true, // Direct buyer-seller chat
           lastMessage: `Inquiry about ${product.title}`,
           lastMessageAt: new Date(),
           lastMessageBy: 'buyer'

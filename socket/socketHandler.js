@@ -5,6 +5,7 @@ const {
 } = require('../services/aiChatService')
 const Message = require('../models/Message')
 const ChatRoom = require('../models/ChatRoom')
+const Seller = require('../models/Seller')
 
 module.exports = (io) => {
   io.on('connection', (socket) => {
@@ -115,11 +116,22 @@ module.exports = (io) => {
 
                 // Notify seller to take over
                 if (chatRoom?.sellerId) {
-                  io.to(chatRoom.sellerId.toString()).emit('botHandover', {
-                    roomId,
-                    reason: aiResponse.takeoverReason,
-                    message: 'Bot has handed over to you. Please respond.'
-                  })
+                  let sellerUserId = null
+                  if (chatRoom.sellerModel === 'User') {
+                    sellerUserId = chatRoom.sellerId.toString()
+                  } else {
+                    const seller = await Seller.findById(chatRoom.sellerId)
+                    if (seller) {
+                      sellerUserId = seller.userId?.toString()
+                    }
+                  }
+                  if (sellerUserId) {
+                    io.to(sellerUserId).emit('botHandover', {
+                      roomId,
+                      reason: aiResponse.takeoverReason,
+                      message: 'Bot has handed over to you. Please respond.'
+                    })
+                  }
                 }
               } else {
                 // Save and send AI reply

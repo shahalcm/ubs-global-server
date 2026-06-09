@@ -497,7 +497,11 @@ exports.getContactRequests = async (req, res) => {
   const requests = await ContactRequest.find(query)
     .populate('buyerId', 'name email phone')
     .populate('sellerId', 'shopName')
-    .populate('productId', 'title images')
+    .populate({
+      path: 'productId',
+      select: 'title images category',
+      populate: { path: 'category', select: 'name' }
+    })
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(Number(limit))
@@ -592,19 +596,34 @@ exports.approveContactRequest = async (req, res) => {
   const buyer = await User.findById(request.buyerId)
   const seller = await Seller.findById(request.sellerId)
 
-  const chatRoom = await ChatRoom.create({
-    contactRequestId: request._id,
+  let chatRoom = await ChatRoom.findOne({
     buyerId: request.buyerId,
-    sellerId: request.sellerId,
-    adminId: req.admin._id,
-    productId: request.productId,
-    roomName: `${request.buyerName} × ${request.sellerShop}`,
-    adminMonitoring: true,
-    status: 'active',
-    lastMessage: request.subject || 'Contact request connected',
-    lastMessageAt: new Date(),
-    lastMessageBy: 'admin',
+    sellerId: request.sellerId
   })
+
+  if (chatRoom) {
+    chatRoom.status = 'active'
+    chatRoom.productId = request.productId
+    chatRoom.contactRequestId = request._id
+    chatRoom.lastMessage = request.subject || 'Contact request connected'
+    chatRoom.lastMessageAt = new Date()
+    chatRoom.lastMessageBy = 'admin'
+    await chatRoom.save()
+  } else {
+    chatRoom = await ChatRoom.create({
+      contactRequestId: request._id,
+      buyerId: request.buyerId,
+      sellerId: request.sellerId,
+      adminId: req.admin._id,
+      productId: request.productId,
+      roomName: `${request.buyerName} × ${request.sellerShop}`,
+      adminMonitoring: true,
+      status: 'active',
+      lastMessage: request.subject || 'Contact request connected',
+      lastMessageAt: new Date(),
+      lastMessageBy: 'admin',
+    })
+  }
 
   request.status = 'connected'
   request.chatRoomId = chatRoom._id

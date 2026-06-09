@@ -354,18 +354,30 @@ exports.startPropertyChat = async (req, res) => {
 
     // Check if chat room already exists
     let chatRoom = await ChatRoom.findOne({
-      'meta.propertyId': property._id,
-      buyerId: req.user._id
+      buyerId: req.user._id,
+      sellerId: property.ownerId
     })
 
-    if (!chatRoom) {
+    if (chatRoom) {
+      chatRoom.roomName = `${req.user.name} about ${property.title}`
+      chatRoom.meta = {
+        propertyId: property._id,
+        propertyTitle: property.title,
+        propertyImage: property.images?.[0] || 'https://via.placeholder.com/400x250',
+        type: 'property_inquiry'
+      }
+      chatRoom.lastMessage = `Inquiry about ${property.title}`
+      chatRoom.lastMessageAt = new Date()
+      chatRoom.lastMessageBy = 'buyer'
+      await chatRoom.save()
+    } else {
       chatRoom = await ChatRoom.create({
         buyerId: req.user._id,
         sellerId: property.ownerId,
         sellerModel: 'User', // Peer-to-peer User referenced dynamically
         roomName: `${req.user.name} about ${property.title}`,
         status: 'active',
-        adminMonitoring: false,
+        adminMonitoring: true,
         meta: {
           propertyId: property._id,
           propertyTitle: property.title,

@@ -5,20 +5,35 @@ const User = require('../models/User')
 const Seller = require('../models/Seller')
 const { createInAppNotification, sendPushNotification } = require('../utils/notifications')
 
-const ensureParticipant = (room, userId) => {
+const ensureParticipant = async (room, userId) => {
   const id = userId.toString()
-  return room.buyerId?.toString() === id || room.sellerId?.toString() === id || room.adminId?.toString() === id
+  if (room.buyerId?.toString() === id || room.adminId?.toString() === id) {
+    return true
+  }
+  if (room.sellerId?.toString() === id) {
+    return true
+  }
+  const seller = await Seller.findOne({ userId })
+  if (seller && room.sellerId?.toString() === seller._id.toString()) {
+    return true
+  }
+  return false
 }
 
 exports.getMyRooms = async (req, res) => {
   try {
     const userId = req.user._id
-    const rooms = await ChatRoom.find({
-      $or: [
-        { buyerId: userId },
-        { sellerId: userId }
-      ]
-    })
+    const seller = await Seller.findOne({ userId })
+    
+    const orConditions = [
+      { buyerId: userId },
+      { sellerId: userId }
+    ]
+    if (seller) {
+      orConditions.push({ sellerId: seller._id })
+    }
+
+    const rooms = await ChatRoom.find({ $or: orConditions })
       .populate('buyerId', 'name avatar')
       .populate('sellerId', 'shopName shopLogo ownerName')
       .populate('productId', 'title images price')
@@ -41,7 +56,7 @@ exports.getMessages = async (req, res) => {
     if (!room) {
       return res.status(404).json({ success: false, message: 'Chat room not found' })
     }
-    if (!ensureParticipant(room, req.user._id)) {
+    if (!(await ensureParticipant(room, req.user._id))) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }
 
@@ -69,7 +84,7 @@ exports.sendMessage = async (req, res) => {
     if (!room) {
       return res.status(404).json({ success: false, message: 'Chat room not found' })
     }
-    if (!ensureParticipant(room, req.user._id)) {
+    if (!(await ensureParticipant(room, req.user._id))) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }
 
@@ -170,7 +185,7 @@ exports.markRoomRead = async (req, res) => {
     if (!room) {
       return res.status(404).json({ success: false, message: 'Chat room not found' })
     }
-    if (!ensureParticipant(room, req.user._id)) {
+    if (!(await ensureParticipant(room, req.user._id))) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }
 
