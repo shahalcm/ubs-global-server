@@ -40,6 +40,8 @@ const chatRoomSchema = new mongoose.Schema({
   lastMessageBy: String,
   buyerUnread: { type: Number, default: 0 },
   sellerUnread: { type: Number, default: 0 },
-  adminUnread: { type: Number, default: 0 }
+  adminUnread: { type: Number, default: 0 },
+  isDeletedByBuyer: { type: Boolean, default: false },
+  isDeletedBySeller: { type: Boolean, default: false }
 }, { timestamps: true })
 module.exports = mongoose.model('ChatRoom', chatRoomSchema)

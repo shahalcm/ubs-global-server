@@ -16,8 +16,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['buyer', 'seller', 'admin'],
-    default: 'buyer'
+    enum: ['buyer', 'seller', 'admin']
   },
   isVerified: { type: Boolean, default: false },
   isBlocked: { type: Boolean, default: false },

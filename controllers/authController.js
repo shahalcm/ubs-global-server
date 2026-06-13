@@ -101,3 +101,38 @@ exports.googleMobileAuth = async (req, res) => {
   const token = generateUserToken(user._id)
   res.json({ success: true, token, user })
 }
+
+// Set user role (buyer or seller)
+exports.setRole = async (req, res) => {
+  try {
+    const { role } = req.body
+    if (!['buyer', 'seller'].includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role selection'
+      })
+    }
+
+    const user = await User.findById(req.user._id)
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      })
+    }
+
+    user.role = role
+    await user.save()
+
+    res.json({
+      success: true,
+      message: 'Role updated successfully',
+      user
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    })
+  }
+}

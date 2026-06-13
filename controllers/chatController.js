@@ -26,11 +26,11 @@ exports.getMyRooms = async (req, res) => {
     const seller = await Seller.findOne({ userId })
     
     const orConditions = [
-      { buyerId: userId },
-      { sellerId: userId }
+      { buyerId: userId, isDeletedByBuyer: { $ne: true } },
+      { sellerId: userId, isDeletedBySeller: { $ne: true } }
     ]
     if (seller) {
-      orConditions.push({ sellerId: seller._id })
+      orConditions.push({ sellerId: seller._id, isDeletedBySeller: { $ne: true } })
     }
 
     const rooms = await ChatRoom.find({ $or: orConditions })
@@ -200,6 +200,41 @@ exports.markRoomRead = async (req, res) => {
     await Message.updateMany({ chatRoomId: roomId, senderId: { $ne: req.user._id }, isRead: false }, { isRead: true, readAt: new Date() })
 
     res.json({ success: true, message: 'Chat marked as read' })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.deleteRoom = async (req, res) => {
+  try {
+    const { roomId } = req.params
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(400).json({ success: false, message: 'Invalid room id' })
+    }
+    const room = await ChatRoom.findById(roomId)
+    if (!room) {
+      return res.status(404).json({ success: false, message: 'Chat room not found' })
+    }
+
+    const userId = req.user._id
+    const seller = await Seller.findOne({ userId })
+
+    let isBuyer = room.buyerId?.toString() === userId.toString()
+    let isSeller = room.sellerId?.toString() === userId.toString() || (seller && room.sellerId?.toString() === seller._id.toString())
+
+    if (!isBuyer && !isSeller) {
+      return res.status(403).json({ success: false, message: 'Access denied' })
+    }
+
+    if (isBuyer) {
+      room.isDeletedByBuyer = true
+    }
+    if (isSeller) {
+      room.isDeletedBySeller = true
+    }
+
+    await room.save()
+    res.json({ success: true, message: 'Chat room deleted successfully' })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }

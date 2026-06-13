@@ -7,5 +7,6 @@ router.get('/my-rooms', protect, chatController.getMyRooms)
 router.get('/:roomId/messages', protect, chatController.getMessages)
 router.post('/:roomId/messages', protect, chatController.sendMessage)
 router.patch('/:roomId/read', protect, chatController.markRoomRead)
+router.delete('/:roomId', protect, chatController.deleteRoom)
 
 module.exports = router
