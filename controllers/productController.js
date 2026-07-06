@@ -355,14 +355,17 @@ exports.getProduct = async (req, res) => {
     }
 
     // Get more products from same seller
-    const sellerProducts = await Product.find({
-      sellerId: product.sellerId._id,
-      _id: { $ne: product._id },
-      approvalStatus: 'approved',
-      status: 'active'
-    })
-      .limit(6)
-      .select('title images price rating totalReviews')
+    let sellerProducts = []
+    if (product.sellerId) {
+      sellerProducts = await Product.find({
+        sellerId: product.sellerId._id,
+        _id: { $ne: product._id },
+        approvalStatus: 'approved',
+        status: 'active'
+      })
+        .limit(6)
+        .select('title images price rating totalReviews')
+    }
 
     res.json({
       success: true,

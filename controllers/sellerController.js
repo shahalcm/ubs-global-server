@@ -78,7 +78,7 @@ const getDateLabels = (period) => {
 
 exports.applyAsSeller = async (req, res) => {
   try {
-    const { shopName, ownerName, phone, address, businessType } = req.body
+    const { shopName, ownerName, phone, address, businessType, bankDetails } = req.body
     
     // Check if seller already exists for this user
     const existingSeller = await Seller.findOne({ userId: req.user._id })
@@ -98,6 +98,15 @@ exports.applyAsSeller = async (req, res) => {
       }
     }
 
+    let parsedBankDetails = undefined
+    if (bankDetails) {
+      try {
+        parsedBankDetails = typeof bankDetails === 'string' ? JSON.parse(bankDetails) : bankDetails
+      } catch (err) {
+        console.error('Failed to parse bankDetails JSON string:', err)
+      }
+    }
+
     const seller = new Seller({
       userId: req.user._id,
       shopName,
@@ -110,6 +119,7 @@ exports.applyAsSeller = async (req, res) => {
       businessType,
       shopLogo: shopLogoUrl,
       idProof: idProofUrl,
+      bankDetails: parsedBankDetails,
       status: 'pending'
     })
 
@@ -399,7 +409,7 @@ exports.updateSellerProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Seller profile not found' })
     }
 
-    const { shopName, description, phone, address, businessType } = req.body
+    const { shopName, description, phone, address, businessType, bankDetails } = req.body
 
     if (shopName !== undefined) seller.shopName = shopName
     if (description !== undefined) seller.description = description
@@ -413,6 +423,22 @@ exports.updateSellerProfile = async (req, res) => {
         }
       } else {
         seller.address.street = address
+      }
+    }
+    if (bankDetails !== undefined) {
+      let parsedBankDetails = bankDetails
+      if (typeof bankDetails === 'string') {
+        try {
+          parsedBankDetails = JSON.parse(bankDetails)
+        } catch (e) {
+          console.error("Failed to parse bankDetails in updateSellerProfile", e)
+        }
+      }
+      if (typeof parsedBankDetails === 'object' && parsedBankDetails !== null) {
+        seller.bankDetails = {
+          ...seller.bankDetails,
+          ...parsedBankDetails
+        }
       }
     }
 
