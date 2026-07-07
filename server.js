@@ -35,7 +35,9 @@ const allowedOrigins = [
   'https://api.ubsglobalapp.com/api',
   'https://ubs-global-admin.vercel.app',
   'https://ubs-global-adminpanel.vercel.app',
-  'https://admin.ubsglobalapp.com'
+  'https://admin.ubsglobalapp.com',
+  'https://ubsglobalapp.com',
+  'https://www.ubsglobalapp.com'
 ]
 
 // Socket.io setup
