@@ -254,21 +254,24 @@ exports.deactivateBot = async (
   reason = 'seller_takeover'
 ) => {
   await BotSession.findOneAndUpdate(
-    { chatRoomId, botActive: true },
+    { chatRoomId },
     {
-      botActive: false,
-      deactivatedReason: reason
-    }
+      $set: {
+        botActive: false,
+        deactivatedReason: reason
+      }
+    },
+    { upsert: true }
   )
 }
 
 // Check if bot is active
 exports.isBotActive = async (chatRoomId) => {
-  const session = await BotSession.findOne({
-    chatRoomId,
-    botActive: true
-  })
-  return !!session
+  const session = await BotSession.findOne({ chatRoomId })
+  if (!session) {
+    return true // Default to active if no session exists yet
+  }
+  return session.botActive
 }
 
 // Get bot session
