@@ -206,7 +206,7 @@ exports.getAIReply = async (
 
     // Get AI response
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022', // Using modern Claude 3.5 Sonnet identifier
+      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
       max_tokens: 300,
       system: buildSystemPrompt(
         session.context,
