@@ -24,6 +24,45 @@ exports.createRazorpayOrder = async (req, res) => {
       cartId
     } = req.body
 
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order items are required'
+      })
+    }
+
+    if (!deliveryAddress || typeof deliveryAddress !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery address is required'
+      })
+    }
+
+    const fullName = (deliveryAddress.fullName || deliveryAddress.name || '').trim()
+    const phone = (deliveryAddress.phone || '').trim()
+    const street = (deliveryAddress.street || '').trim()
+    const city = (deliveryAddress.city || '').trim()
+    const country = (deliveryAddress.country || '').trim()
+
+    if (!fullName || !phone || !street || !city || !country) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name, phone, street address, city, and country are required in delivery address'
+      })
+    }
+
+    const formattedDeliveryAddress = {
+      fullName,
+      name: fullName,
+      phone,
+      email: (deliveryAddress.email || '').trim(),
+      street,
+      city,
+      state: (deliveryAddress.state || '').trim(),
+      country,
+      zipCode: (deliveryAddress.zipCode || '').trim()
+    }
+
     // Calculate amounts
     let subtotal = 0
     let shippingFee = 0
@@ -50,8 +89,8 @@ exports.createRazorpayOrder = async (req, res) => {
       orderItems.push({
         productId: product._id,
         productName: product.title,
-        productImage: product.images[0],
-        productSku: product.sku,
+        productImage: product.images?.[0] || product.image || '',
+        productSku: product.sku || '',
         quantity: item.quantity,
         price: product.price,
         subtotal: itemSubtotal
@@ -103,7 +142,7 @@ exports.createRazorpayOrder = async (req, res) => {
       commissionAmount: Number(commissionAmount.toFixed(2)),
       sellerEarnings: Number(sellerEarnings.toFixed(2)),
       adminEarnings: Number(adminEarnings.toFixed(2)),
-      deliveryAddress,
+      deliveryAddress: formattedDeliveryAddress,
       timeline: [{
         status: 'placed',
         timestamp: new Date(),
@@ -120,9 +159,9 @@ exports.createRazorpayOrder = async (req, res) => {
       orderNumber: order.orderNumber,
       key: process.env.RAZORPAY_KEY_ID,
       prefill: {
-        name: req.user.name,
-        email: req.user.email,
-        contact: req.user.phone
+        name: formattedDeliveryAddress.fullName || req.user.name,
+        email: formattedDeliveryAddress.email || req.user.email,
+        contact: formattedDeliveryAddress.phone || req.user.phone
       },
       orderSummary: {
         items: orderItems,
@@ -130,7 +169,7 @@ exports.createRazorpayOrder = async (req, res) => {
         shippingFee: shippingFee.toFixed(2),
         tax: tax.toFixed(2),
         grandTotal: grandTotal.toFixed(2),
-        deliveryAddress
+        deliveryAddress: formattedDeliveryAddress
       }
     })
   } catch (error) {

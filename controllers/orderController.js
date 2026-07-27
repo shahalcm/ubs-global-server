@@ -9,6 +9,39 @@ exports.placeOrder = async (req, res) => {
     paymentMethod, paymentIntentId
   } = req.body
 
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ success: false, message: 'Order items are required' })
+  }
+
+  if (!deliveryAddress || typeof deliveryAddress !== 'object') {
+    return res.status(400).json({ success: false, message: 'Delivery address is required' })
+  }
+
+  const fullName = (deliveryAddress.fullName || deliveryAddress.name || '').trim()
+  const phone = (deliveryAddress.phone || '').trim()
+  const street = (deliveryAddress.street || '').trim()
+  const city = (deliveryAddress.city || '').trim()
+  const country = (deliveryAddress.country || '').trim()
+
+  if (!fullName || !phone || !street || !city || !country) {
+    return res.status(400).json({
+      success: false,
+      message: 'Full name, phone, street address, city, and country are required in delivery address'
+    })
+  }
+
+  const formattedDeliveryAddress = {
+    fullName,
+    name: fullName,
+    phone,
+    email: (deliveryAddress.email || '').trim(),
+    street,
+    city,
+    state: (deliveryAddress.state || '').trim(),
+    country,
+    zipCode: (deliveryAddress.zipCode || '').trim()
+  }
+
   let totalAmount = 0
   let shippingFee = 0
   const orderItems = []
@@ -22,7 +55,7 @@ exports.placeOrder = async (req, res) => {
     orderItems.push({
       productId: product._id,
       productName: product.title,
-      productImage: product.images[0],
+      productImage: product.images?.[0] || product.image || '',
       quantity: item.quantity,
       price: product.price,
       subtotal
@@ -51,7 +84,7 @@ exports.placeOrder = async (req, res) => {
     paymentMethod,
     paymentIntentId,
     paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
-    deliveryAddress,
+    deliveryAddress: formattedDeliveryAddress,
     commissionPercent: commissionRate,
     commissionAmount: commission,
     sellerEarnings,
