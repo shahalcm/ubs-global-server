@@ -106,9 +106,10 @@ exports.createRazorpayOrder = async (req, res) => {
     const sellerEarnings = subtotal
     const adminEarnings = commissionAmount
 
-    // Convert to paise (Razorpay uses smallest currency unit)
-    // USD: amount in cents (1 USD = 100 cents)
-    const amountInCents = Math.round(grandTotal * 100)
+    const currency = (req.body.currency || 'USD').toUpperCase()
+
+    // Convert to paise/cents (Razorpay uses smallest currency unit)
+    const amountInSmallestUnit = Math.round(grandTotal * 100)
 
     // Create Razorpay order
     let razorpayOrder
@@ -116,8 +117,8 @@ exports.createRazorpayOrder = async (req, res) => {
       razorpayOrder = { id: `order_mock_${Date.now()}` }
     } else {
       razorpayOrder = await razorpay.orders.create({
-        amount: amountInCents,
-        currency: 'USD',
+        amount: amountInSmallestUnit,
+        currency,
         receipt: `receipt_${Date.now()}`,
         notes: {
           buyerId: req.user._id.toString(),
@@ -135,7 +136,7 @@ exports.createRazorpayOrder = async (req, res) => {
       shippingFee: Number(shippingFee.toFixed(2)),
       tax: Number(tax.toFixed(2)),
       grandTotal: Number(grandTotal.toFixed(2)),
-      paymentMethod: 'razorpay',
+      paymentMethod: currency === 'INR' ? 'razorpay' : 'stripe',
       paymentStatus: 'pending',
       razorpayOrderId: razorpayOrder.id,
       commissionPercent,
@@ -153,8 +154,8 @@ exports.createRazorpayOrder = async (req, res) => {
     res.json({
       success: true,
       razorpayOrderId: razorpayOrder.id,
-      amount: amountInCents,
-      currency: 'USD',
+      amount: amountInSmallestUnit,
+      currency,
       orderId: order._id,
       orderNumber: order.orderNumber,
       key: process.env.RAZORPAY_KEY_ID,
@@ -169,7 +170,8 @@ exports.createRazorpayOrder = async (req, res) => {
         shippingFee: shippingFee.toFixed(2),
         tax: tax.toFixed(2),
         grandTotal: grandTotal.toFixed(2),
-        deliveryAddress: formattedDeliveryAddress
+        deliveryAddress: formattedDeliveryAddress,
+        currency
       }
     })
   } catch (error) {
