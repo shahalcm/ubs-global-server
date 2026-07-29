@@ -494,7 +494,8 @@ exports.updateProduct = async (req, res) => {
       height,
       freeShipping,
       shippingFee,
-      tags
+      tags,
+      inStock
     } = req.body
 
     // Update fields if provided
@@ -504,7 +505,20 @@ exports.updateProduct = async (req, res) => {
     if (price) product.price = Number(price)
     if (comparePrice !== undefined) product.comparePrice = Number(comparePrice)
     if (costPerItem !== undefined) product.costPerItem = Number(costPerItem)
-    if (stock !== undefined) product.stock = Number(stock)
+    
+    if (inStock !== undefined) {
+      const isProductInStock = inStock === 'true' || inStock === true
+      if (!isProductInStock) {
+        product.stock = 0
+      } else if (stock !== undefined) {
+        product.stock = Math.max(0, Number(stock))
+      } else if (product.stock === 0) {
+        product.stock = 10
+      }
+    } else if (stock !== undefined) {
+      product.stock = Math.max(0, Number(stock))
+    }
+
     if (lowStockAlert !== undefined) product.lowStockAlert = Number(lowStockAlert)
     if (weight !== undefined) product.weight = Number(weight)
     
