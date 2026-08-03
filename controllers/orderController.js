@@ -2,6 +2,8 @@ const Order = require('../models/Order')
 const Product = require('../models/Product')
 const Seller = require('../models/Seller')
 const Transaction = require('../models/Transaction')
+const Notification = require('../models/Notification')
+const { sendEmail } = require('../utils/sendEmail')
 
 exports.placeOrder = async (req, res) => {
   const {
@@ -53,7 +55,7 @@ exports.placeOrder = async (req, res) => {
     if (!product) continue
     const subtotal = product.price * item.quantity
     totalAmount += subtotal
-    shippingFee += product.freeShipping ? 0 : product.shippingFee
+    shippingFee += product.freeShipping ? 0 : (product.shippingFee || 0)
     orderItems.push({
       productId: product._id,
       productName: product.title,
@@ -62,14 +64,20 @@ exports.placeOrder = async (req, res) => {
       price: product.price,
       subtotal
     })
-    product.stock -= item.quantity
+    product.stock = Math.max(0, product.stock - item.quantity)
     product.totalSales += item.quantity
     await product.save()
   }
 
+  let targetSellerId = sellerId
+  if (!targetSellerId && orderItems[0]?.productId) {
+    const firstProd = await Product.findById(orderItems[0].productId)
+    if (firstProd?.sellerId) targetSellerId = firstProd.sellerId
+  }
+
   const tax = totalAmount * 0.05
   const grandTotal = totalAmount + shippingFee + tax
-  const seller = await Seller.findById(sellerId)
+  const seller = await Seller.findById(targetSellerId)
   const commissionRate = 3
   const commission = Number((totalAmount * (commissionRate / 100)).toFixed(2))
   const sellerEarnings = Number(totalAmount.toFixed(2))
@@ -77,7 +85,7 @@ exports.placeOrder = async (req, res) => {
 
   const order = await Order.create({
     buyerId: req.user._id,
-    sellerId,
+    sellerId: targetSellerId,
     items: orderItems,
     subtotal: totalAmount,
     shippingFee,
@@ -87,6 +95,8 @@ exports.placeOrder = async (req, res) => {
     paymentIntentId,
     paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
     deliveryAddress: formattedDeliveryAddress,
+    sellerNote: (sellerNote || '').trim(),
+    shippingSpeed: shippingSpeed || 'standard',
     commissionPercent: commissionRate,
     commissionAmount: commission,
     sellerEarnings,
@@ -96,7 +106,8 @@ exports.placeOrder = async (req, res) => {
 
   await Transaction.create({
     orderId: order._id,
-    sellerId,
+    orderNumber: order.orderNumber,
+    sellerId: targetSellerId,
     buyerId: req.user._id,
     grossAmount: grandTotal,
     commissionPercent: commissionRate,
@@ -107,11 +118,90 @@ exports.placeOrder = async (req, res) => {
     status: order.paymentStatus === 'paid' ? 'completed' : 'pending'
   })
 
-  io.to(sellerId.toString()).emit('newOrder', {
-    orderId: order._id,
-    buyerName: req.user.name,
-    amount: grandTotal
-  })
+  // Real-time socket events
+  const socketIo = global.io || (typeof io !== 'undefined' ? io : null)
+  if (socketIo && targetSellerId) {
+    const payload = {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      buyerName: req.user.name,
+      amount: grandTotal,
+      items: orderItems,
+      deliveryAddress: formattedDeliveryAddress,
+      message: 'New order received!'
+    }
+    socketIo.to(targetSellerId.toString()).emit('newOrder', payload)
+    if (seller && seller.userId) {
+      socketIo.to(seller.userId.toString()).emit('newOrder', payload)
+    }
+  }
+
+  // Create notifications
+  const notificationDocs = [
+    {
+      userId: targetSellerId,
+      userType: 'Seller',
+      title: '🛍️ New Order Received!',
+      message: `Order #${order.orderNumber} from ${req.user.name} - ${grandTotal}`,
+      type: 'order',
+      data: { orderId: order._id }
+    },
+    {
+      userId: req.user._id,
+      userType: 'User',
+      title: '✅ Order Placed Successfully!',
+      message: `Your order #${order.orderNumber} has been placed`,
+      type: 'order',
+      data: { orderId: order._id }
+    }
+  ]
+  if (seller && seller.userId) {
+    notificationDocs.push({
+      userId: seller.userId,
+      userType: 'User',
+      title: '🛍️ New Order Received!',
+      message: `Order #${order.orderNumber} from ${req.user.name} - ${grandTotal}`,
+      type: 'order',
+      data: { orderId: order._id }
+    })
+  }
+  await Notification.create(notificationDocs)
+
+  // Send email to seller
+  if (seller && seller.email) {
+    try {
+      const itemsListHtml = orderItems.map(i => `<li><strong>${i.productName}</strong> x ${i.quantity} — ${i.price} each</li>`).join('')
+      const addr = formattedDeliveryAddress
+      const addressHtml = `
+        <p><strong>Full Name:</strong> ${addr.fullName}</p>
+        <p><strong>Phone:</strong> ${addr.phone}</p>
+        <p><strong>Email:</strong> ${addr.email || req.user.email || 'N/A'}</p>
+        <p><strong>Address:</strong> ${addr.street}, ${addr.landmark ? addr.landmark + ', ' : ''}${addr.city}, ${addr.state}, ${addr.country} - ${addr.zipCode}</p>
+      `
+      await sendEmail({
+        to: seller.email,
+        subject: `🛍️ New Order Received: #${order.orderNumber}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 16px; color: #333;">
+            <h2 style="color: #1a237e;">New Order Received on UBS Global!</h2>
+            <p>Hi <strong>${seller.ownerName || seller.shopName}</strong>,</p>
+            <p>You have received a new order <strong>#${order.orderNumber}</strong> for total <strong>${grandTotal}</strong>.</p>
+            <hr style="border: 0; border-top: 1px solid #e0e0e0;" />
+            <h3 style="color: #1a237e;">Ordered Items</h3>
+            <ul>${itemsListHtml}</ul>
+            <hr style="border: 0; border-top: 1px solid #e0e0e0;" />
+            <h3 style="color: #1a237e;">Customer Contact & Shipping Location</h3>
+            ${addressHtml}
+            ${sellerNote ? `<p><strong>Order Note:</strong> ${sellerNote}</p>` : ''}
+            <hr style="border: 0; border-top: 1px solid #e0e0e0;" />
+            <p>Please log in to your UBS Global Seller Portal to fulfill this order.</p>
+          </div>
+        `
+      })
+    } catch (e) {
+      console.log('Error sending order email to seller:', e.message)
+    }
+  }
 
   res.status(201).json({ success: true, order })
 }
@@ -144,7 +234,10 @@ exports.trackOrder = async (req, res) => {
 
 exports.getSellerOrders = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id })
+    let seller = await Seller.findOne({ userId: req.user._id })
+    if (!seller) {
+      seller = await Seller.findById(req.user._id)
+    }
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller profile not found' })
     }
@@ -156,7 +249,7 @@ exports.getSellerOrders = async (req, res) => {
     }
 
     const orders = await Order.find(query)
-      .populate('buyerId', 'name email')
+      .populate('buyerId', 'name email phone')
       .sort({ createdAt: -1 })
 
     res.json({ success: true, orders })

@@ -8,6 +8,7 @@ const Seller = require('../models/Seller')
 const User = require('../models/User')
 const Notification = require('../models/Notification')
 const Withdrawal = require('../models/Withdrawal')
+const { sendEmail } = require('../utils/sendEmail')
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -137,10 +138,18 @@ exports.createRazorpayOrder = async (req, res) => {
       })
     }
 
+    let targetSellerId = sellerId
+    if (!targetSellerId && items[0]?.productId) {
+      const firstProd = await Product.findById(items[0].productId)
+      if (firstProd?.sellerId) {
+        targetSellerId = firstProd.sellerId
+      }
+    }
+
     // Create pending order in DB
     const order = await Order.create({
       buyerId: req.user._id,
-      sellerId,
+      sellerId: targetSellerId,
       items: orderItems,
       subtotal: Number(subtotal.toFixed(2)),
       shippingFee: Number(shippingFee.toFixed(2)),
@@ -241,7 +250,7 @@ exports.verifyPayment = async (req, res) => {
       },
       { new: true }
     ).populate('buyerId', 'name email phone')
-     .populate('sellerId', 'shopName ownerName fcmToken')
+     .populate('sellerId', 'shopName ownerName email userId fcmToken')
 
     // Reduce stock
     for (const item of order.items) {
@@ -292,19 +301,22 @@ exports.verifyPayment = async (req, res) => {
       { items: [] }
     )
 
-    // Notify seller - new order
+    // Notify seller - new order via Socket.io
     if (global.io) {
-      global.io.to(order.sellerId._id.toString()).emit(
-        'newOrder',
-        {
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          buyerName: order.buyerId.name,
-          amount: order.grandTotal,
-          items: order.items,
-          message: 'New order received!'
-        }
-      )
+      const payload = {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        buyerName: order.buyerId.name,
+        amount: order.grandTotal,
+        items: order.items,
+        deliveryAddress: order.deliveryAddress,
+        message: 'New order received!'
+      }
+
+      global.io.to(order.sellerId._id.toString()).emit('newOrder', payload)
+      if (order.sellerId.userId) {
+        global.io.to(order.sellerId.userId.toString()).emit('newOrder', payload)
+      }
 
       // Notify admin
       global.io.to('admin-room').emit('paymentReceived', {
@@ -316,13 +328,13 @@ exports.verifyPayment = async (req, res) => {
       })
     }
 
-    // Create notifications
-    await Notification.create([
+    // Create notifications for Seller and Buyer
+    const notificationDocs = [
       {
         userId: order.sellerId._id,
         userType: 'Seller',
         title: '🛍️ New Order Received!',
-        message: `Order #${order.orderNumber} from ${order.buyerId.name} - $${order.grandTotal}`,
+        message: `Order #${order.orderNumber} from ${order.buyerId.name} - ${order.grandTotal}`,
         type: 'order',
         data: { orderId: order._id }
       },
@@ -334,7 +346,57 @@ exports.verifyPayment = async (req, res) => {
         type: 'order',
         data: { orderId: order._id }
       }
-    ])
+    ]
+
+    if (order.sellerId.userId) {
+      notificationDocs.push({
+        userId: order.sellerId.userId,
+        userType: 'User',
+        title: '🛍️ New Order Received!',
+        message: `Order #${order.orderNumber} from ${order.buyerId.name} - ${order.grandTotal}`,
+        type: 'order',
+        data: { orderId: order._id }
+      })
+    }
+
+    await Notification.create(notificationDocs)
+
+    // Send email alert to seller
+    try {
+      const sellerEmail = order.sellerId?.email
+      if (sellerEmail) {
+        const itemsListHtml = order.items.map(i => `<li><strong>${i.productName}</strong> x ${i.quantity} — ${i.price} each</li>`).join('')
+        const addr = order.deliveryAddress || {}
+        const addressHtml = `
+          <p><strong>Full Name:</strong> ${addr.fullName || order.buyerId.name}</p>
+          <p><strong>Phone:</strong> ${addr.phone || order.buyerId.phone || 'N/A'}</p>
+          <p><strong>Email:</strong> ${addr.email || order.buyerId.email || 'N/A'}</p>
+          <p><strong>Address:</strong> ${addr.street || ''}, ${addr.landmark ? addr.landmark + ', ' : ''}${addr.city || ''}, ${addr.state || ''}, ${addr.country || ''} - ${addr.zipCode || ''}</p>
+        `
+        await sendEmail({
+          to: sellerEmail,
+          subject: `🛍️ New Order Received: #${order.orderNumber}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; padding: 16px; color: #333;">
+              <h2 style="color: #1a237e;">New Order Received on UBS Global!</h2>
+              <p>Hi <strong>${order.sellerId.ownerName || order.sellerId.shopName}</strong>,</p>
+              <p>Great news! You have received a new order <strong>#${order.orderNumber}</strong> for total <strong>${order.grandTotal}</strong>.</p>
+              <hr style="border: 0; border-top: 1px solid #e0e0e0;" />
+              <h3 style="color: #1a237e;">Ordered Items</h3>
+              <ul>${itemsListHtml}</ul>
+              <hr style="border: 0; border-top: 1px solid #e0e0e0;" />
+              <h3 style="color: #1a237e;">Customer Contact & Shipping Location</h3>
+              ${addressHtml}
+              ${order.sellerNote ? `<p><strong>Order Note:</strong> ${order.sellerNote}</p>` : ''}
+              <hr style="border: 0; border-top: 1px solid #e0e0e0;" />
+              <p>Please log in to your UBS Global Seller Portal to fulfill this order.</p>
+            </div>
+          `
+        })
+      }
+    } catch (emailErr) {
+      console.log('Error sending seller order notification email:', emailErr.message)
+    }
 
     res.json({
       success: true,
