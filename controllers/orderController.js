@@ -6,7 +6,7 @@ const Transaction = require('../models/Transaction')
 exports.placeOrder = async (req, res) => {
   const {
     items, sellerId, deliveryAddress,
-    paymentMethod, paymentIntentId
+    paymentMethod, paymentIntentId, sellerNote, shippingSpeed
   } = req.body
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -36,10 +36,12 @@ exports.placeOrder = async (req, res) => {
     phone,
     email: (deliveryAddress.email || '').trim(),
     street,
+    landmark: (deliveryAddress.landmark || '').trim(),
     city,
     state: (deliveryAddress.state || '').trim(),
     country,
-    zipCode: (deliveryAddress.zipCode || '').trim()
+    zipCode: (deliveryAddress.zipCode || '').trim(),
+    deliveryInstructions: (deliveryAddress.deliveryInstructions || '').trim()
   }
 
   let totalAmount = 0

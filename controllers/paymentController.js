@@ -21,7 +21,9 @@ exports.createRazorpayOrder = async (req, res) => {
       items,
       sellerId,
       deliveryAddress,
-      cartId
+      cartId,
+      sellerNote,
+      shippingSpeed
     } = req.body
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -57,10 +59,12 @@ exports.createRazorpayOrder = async (req, res) => {
       phone,
       email: (deliveryAddress.email || '').trim(),
       street,
+      landmark: (deliveryAddress.landmark || '').trim(),
       city,
       state: (deliveryAddress.state || '').trim(),
       country,
-      zipCode: (deliveryAddress.zipCode || '').trim()
+      zipCode: (deliveryAddress.zipCode || '').trim(),
+      deliveryInstructions: (deliveryAddress.deliveryInstructions || '').trim()
     }
 
     // Calculate amounts
@@ -95,6 +99,12 @@ exports.createRazorpayOrder = async (req, res) => {
         price: product.price,
         subtotal: itemSubtotal
       })
+    }
+
+    // Add express shipping fee if selected
+    const chosenShippingSpeed = (shippingSpeed || 'standard').toLowerCase()
+    if (chosenShippingSpeed === 'express') {
+      shippingFee += 9.99
     }
 
     const tax = subtotal * 0.05
@@ -144,6 +154,8 @@ exports.createRazorpayOrder = async (req, res) => {
       sellerEarnings: Number(sellerEarnings.toFixed(2)),
       adminEarnings: Number(adminEarnings.toFixed(2)),
       deliveryAddress: formattedDeliveryAddress,
+      sellerNote: (sellerNote || '').trim(),
+      shippingSpeed: chosenShippingSpeed,
       timeline: [{
         status: 'placed',
         timestamp: new Date(),

@@ -68,16 +68,23 @@ const orderSchema = new mongoose.Schema({
     default: 'placed'
   },
 
-  // Delivery address
+  // Delivery address & instructions
   deliveryAddress: {
     fullName: String,
     phone: String,
     email: String,
     street: String,
+    landmark: String,
     city: String,
     state: String,
     country: String,
-    zipCode: String
+    zipCode: String,
+    deliveryInstructions: String
+  },
+  sellerNote: String,
+  shippingSpeed: {
+    type: String,
+    default: 'standard'
   },
 
   // Tracking
