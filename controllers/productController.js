@@ -662,21 +662,39 @@ exports.getProductsByCategory = async (req, res) => {
       status: 'active'
     }
 
-    if (categoryDoc) {
-      query.category = categoryDoc._id
-    } else if (mongoose.Types.ObjectId.isValid(categoryId)) {
-      query.category = categoryId
-    }
-
     if (exclude && mongoose.Types.ObjectId.isValid(exclude)) {
       query._id = { $ne: exclude }
     }
 
-    const products = await Product.find(query)
+    const categoryConditions = []
+    if (categoryDoc) {
+      categoryConditions.push({ category: categoryDoc._id })
+      categoryConditions.push({ category: { $regex: new RegExp(`^${categoryDoc.name}$`, 'i') } })
+      categoryConditions.push({ category: { $regex: new RegExp(`^${categoryDoc.slug}$`, 'i') } })
+    }
+    if (mongoose.Types.ObjectId.isValid(categoryId)) {
+      categoryConditions.push({ category: categoryId })
+    }
+    categoryConditions.push({ category: { $regex: new RegExp(`^${categoryId}$`, 'i') } })
+
+    query.$or = categoryConditions
+
+    let products = await Product.find(query)
       .populate('category', 'name slug image')
       .populate('sellerId', 'shopName shopLogo rating isVerified')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
+
+    // Fallback: If no products found with strict approvalStatus/status query, try without approvalStatus filter
+    if (products.length === 0) {
+      delete query.approvalStatus
+      delete query.status
+      products = await Product.find(query)
+        .populate('category', 'name slug image')
+        .populate('sellerId', 'shopName shopLogo rating isVerified')
+        .sort({ createdAt: -1 })
+        .limit(Number(limit))
+    }
 
     res.json({ success: true, products })
   } catch (error) {
