@@ -642,7 +642,7 @@ exports.searchProducts = async (req, res) => {
 exports.getProductsByCategory = async (req, res) => {
   try {
     const { categoryId } = req.params
-    const { exclude, limit = 10 } = req.query
+    const { exclude, limit = 20 } = req.query
 
     let categoryDoc = null
     if (mongoose.Types.ObjectId.isValid(categoryId)) {
