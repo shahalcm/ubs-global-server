@@ -640,7 +640,48 @@ exports.searchProducts = async (req, res) => {
   res.json({ success: true, products: [] });
 }
 exports.getProductsByCategory = async (req, res) => {
-  res.json({ success: true, products: [] });
+  try {
+    const { categoryId } = req.params
+    const { exclude, limit = 10 } = req.query
+
+    let categoryDoc = null
+    if (mongoose.Types.ObjectId.isValid(categoryId)) {
+      categoryDoc = await Category.findById(categoryId)
+    }
+    if (!categoryDoc) {
+      categoryDoc = await Category.findOne({
+        $or: [
+          { slug: categoryId.toLowerCase() },
+          { name: { $regex: new RegExp(`^${categoryId}$`, 'i') } }
+        ]
+      })
+    }
+
+    const query = {
+      approvalStatus: 'approved',
+      status: 'active'
+    }
+
+    if (categoryDoc) {
+      query.category = categoryDoc._id
+    } else if (mongoose.Types.ObjectId.isValid(categoryId)) {
+      query.category = categoryId
+    }
+
+    if (exclude && mongoose.Types.ObjectId.isValid(exclude)) {
+      query._id = { $ne: exclude }
+    }
+
+    const products = await Product.find(query)
+      .populate('category', 'name slug image')
+      .populate('sellerId', 'shopName shopLogo rating isVerified')
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+
+    res.json({ success: true, products })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
 }
 
 // Start direct chat with product seller
