@@ -120,6 +120,42 @@ exports.sendMessage = async (req, res) => {
           })
         }
       }
+    } else if (senderType === 'buyer') {
+      // Trigger AI assistant for buyer messages sent via REST API
+      const { isBotActive, getAIReply } = require('../services/aiChatService')
+      isBotActive(roomId).then(async (botActive) => {
+        if (botActive && text) {
+          try {
+            const roomContext = {
+              buyerId: req.user._id,
+              sellerId: room.sellerId,
+              productId: room.productId || room.meta?.productId,
+              propertyId: room.meta?.propertyId
+            }
+            const aiResponse = await getAIReply(roomId, text, roomContext)
+            if (aiResponse?.reply) {
+              const botMessage = await Message.create({
+                chatRoomId: roomId,
+                senderType: 'bot',
+                senderName: 'UBS Assistant',
+                messageType: 'text',
+                text: aiResponse.reply,
+                isBot: true
+              })
+              await ChatRoom.findByIdAndUpdate(roomId, {
+                lastMessage: aiResponse.reply,
+                lastMessageAt: new Date(),
+                lastMessageBy: 'bot'
+              })
+              if (global.io) {
+                global.io.to(roomId).emit('receiveMessage', botMessage)
+              }
+            }
+          } catch (aiErr) {
+            console.error('REST AI Assistant error:', aiErr)
+          }
+        }
+      }).catch(() => {})
     }
 
     const unreadUpdate = {}
