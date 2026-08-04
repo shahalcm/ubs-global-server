@@ -18,6 +18,11 @@ router.get('/export-data', protect, userController.exportData)
 router.delete('/delete-data', protect, userController.deleteDataRequest)
 router.patch('/privacy-settings', protect, userController.updatePrivacySettings)
 
+// Recently Viewed Products routes
+router.get('/recently-viewed', protect, userController.getRecentlyViewed)
+router.post('/recently-viewed', protect, userController.addRecentlyViewed)
+router.delete('/recently-viewed', protect, userController.clearRecentlyViewed)
+
 // Public legal doc routes
 router.get('/legal-docs/:key', userController.getLegalDoc)
 

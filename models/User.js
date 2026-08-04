@@ -41,6 +41,16 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product'
   }],
+  recentlyViewed: [{
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product'
+    },
+    viewedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   lastLogin: Date,
   privacySettings: {
     marketingConsent: { type: Boolean, default: false },

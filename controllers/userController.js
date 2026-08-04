@@ -653,3 +653,119 @@ exports.changePassword = async (req, res) => {
   }
 }
 
+// Get Recently Viewed Products
+exports.getRecentlyViewed = async (req, res) => {
+  try {
+    const User = require('../models/User')
+    const user = await User.findById(req.user._id)
+      .populate({
+        path: 'recentlyViewed.product',
+        populate: [
+          { path: 'category', select: 'name slug' },
+          { path: 'sellerId', select: 'shopName shopLogo rating isVerified' }
+        ]
+      })
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' })
+    }
+
+    const products = (user.recentlyViewed || [])
+      .filter(item => item && item.product)
+      .map(item => item.product)
+
+    res.json({
+      success: true,
+      products
+    })
+  } catch (error) {
+    console.error('getRecentlyViewed error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Add Product to Recently Viewed
+exports.addRecentlyViewed = async (req, res) => {
+  try {
+    const { productId } = req.body
+    if (!productId) {
+      return res.status(400).json({ success: false, message: 'productId is required' })
+    }
+
+    const User = require('../models/User')
+    const Product = require('../models/Product')
+
+    const productExists = await Product.findById(productId)
+    if (!productExists) {
+      return res.status(404).json({ success: false, message: 'Product not found' })
+    }
+
+    const user = await User.findById(req.user._id)
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' })
+    }
+
+    if (!user.recentlyViewed) user.recentlyViewed = []
+
+    // Remove existing duplicate
+    user.recentlyViewed = user.recentlyViewed.filter(
+      item => item.product && item.product.toString() !== productId.toString()
+    )
+
+    // Unshift newest to beginning
+    user.recentlyViewed.unshift({ product: productId, viewedAt: new Date() })
+
+    // Limit to latest 20
+    if (user.recentlyViewed.length > 20) {
+      user.recentlyViewed = user.recentlyViewed.slice(0, 20)
+    }
+
+    await user.save()
+
+    // Populate for response
+    const updatedUser = await User.findById(req.user._id)
+      .populate({
+        path: 'recentlyViewed.product',
+        populate: [
+          { path: 'category', select: 'name slug' },
+          { path: 'sellerId', select: 'shopName shopLogo rating isVerified' }
+        ]
+      })
+
+    const products = (updatedUser.recentlyViewed || [])
+      .filter(item => item && item.product)
+      .map(item => item.product)
+
+    res.json({
+      success: true,
+      products
+    })
+  } catch (error) {
+    console.error('addRecentlyViewed error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Clear Recently Viewed History
+exports.clearRecentlyViewed = async (req, res) => {
+  try {
+    const User = require('../models/User')
+    const user = await User.findById(req.user._id)
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' })
+    }
+
+    user.recentlyViewed = []
+    await user.save()
+
+    res.json({
+      success: true,
+      message: 'Recently viewed history cleared',
+      products: []
+    })
+  } catch (error) {
+    console.error('clearRecentlyViewed error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
