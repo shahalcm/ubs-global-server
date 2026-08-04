@@ -236,8 +236,7 @@ exports.getProducts = async (req, res) => {
     // Only show approved active products to buyers
     let query = {
       approvalStatus: 'approved',
-      status: 'active',
-      stock: { $gt: 0 }
+      status: 'active'
     }
 
     if (category) {
