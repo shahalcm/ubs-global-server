@@ -80,6 +80,17 @@ const productSchema = new mongoose.Schema({
     default: 0
   },
   tags: [String],
+  brand: String,
+  color: String,
+  colors: [String],
+  sizes: [String],
+  countryOfOrigin: String,
+  warranty: String,
+  material: String,
+  fit: String,
+  sleeve: String,
+  neck: String,
+  refundPolicy: String,
   specifications: [{
     key: String,
     value: String

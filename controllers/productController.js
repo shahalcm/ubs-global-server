@@ -41,8 +41,32 @@ exports.addProduct = async (req, res) => {
       height,
       freeShipping,
       shippingFee,
-      tags
+      tags,
+      brand,
+      color,
+      colors,
+      sizes,
+      countryOfOrigin,
+      warranty,
+      material,
+      fit,
+      sleeve,
+      neck,
+      refundPolicy
     } = req.body
+
+    const parseArrayField = (val) => {
+      if (!val) return []
+      if (Array.isArray(val)) return val.map(s => String(s).trim()).filter(Boolean)
+      if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val)
+          if (Array.isArray(parsed)) return parsed.map(s => String(s).trim()).filter(Boolean)
+        } catch (e) {}
+        return val.split(',').map(s => s.trim()).filter(Boolean)
+      }
+      return []
+    }
 
     // Validate required fields
     if (!title || !description || !price || !stock) {
@@ -145,7 +169,18 @@ exports.addProduct = async (req, res) => {
       shippingFee: shippingFee
         ? Number(shippingFee)
         : 0,
-      tags: tags ? JSON.parse(tags) : [],
+      tags: tags ? (typeof tags === 'string' ? parseArrayField(tags) : tags) : [],
+      brand: brand ? String(brand).trim() : undefined,
+      color: color ? String(color).trim() : undefined,
+      colors: parseArrayField(colors),
+      sizes: parseArrayField(sizes),
+      countryOfOrigin: countryOfOrigin ? String(countryOfOrigin).trim() : undefined,
+      warranty: warranty ? String(warranty).trim() : undefined,
+      material: material ? String(material).trim() : undefined,
+      fit: fit ? String(fit).trim() : undefined,
+      sleeve: sleeve ? String(sleeve).trim() : undefined,
+      neck: neck ? String(neck).trim() : undefined,
+      refundPolicy: refundPolicy ? String(refundPolicy).trim() : undefined,
       status: 'active',
       approvalStatus
     })
@@ -495,8 +530,32 @@ exports.updateProduct = async (req, res) => {
       freeShipping,
       shippingFee,
       tags,
-      inStock
+      inStock,
+      brand,
+      color,
+      colors,
+      sizes,
+      countryOfOrigin,
+      warranty,
+      material,
+      fit,
+      sleeve,
+      neck,
+      refundPolicy
     } = req.body
+
+    const parseArrayField = (val) => {
+      if (!val) return []
+      if (Array.isArray(val)) return val.map(s => String(s).trim()).filter(Boolean)
+      if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val)
+          if (Array.isArray(parsed)) return parsed.map(s => String(s).trim()).filter(Boolean)
+        } catch (e) {}
+        return val.split(',').map(s => s.trim()).filter(Boolean)
+      }
+      return []
+    }
 
     // Update fields if provided
     if (title) product.title = title.trim()
@@ -534,8 +593,20 @@ exports.updateProduct = async (req, res) => {
       product.freeShipping = freeShipping === 'true' || freeShipping === true
     }
     if (shippingFee !== undefined) product.shippingFee = Number(shippingFee)
-    if (tags) product.tags = typeof tags === 'string' ? JSON.parse(tags) : tags
+    if (tags !== undefined) product.tags = typeof tags === 'string' ? parseArrayField(tags) : tags
     if (subcategory) product.subcategory = subcategory
+
+    if (brand !== undefined) product.brand = String(brand).trim()
+    if (color !== undefined) product.color = String(color).trim()
+    if (colors !== undefined) product.colors = parseArrayField(colors)
+    if (sizes !== undefined) product.sizes = parseArrayField(sizes)
+    if (countryOfOrigin !== undefined) product.countryOfOrigin = String(countryOfOrigin).trim()
+    if (warranty !== undefined) product.warranty = String(warranty).trim()
+    if (material !== undefined) product.material = String(material).trim()
+    if (fit !== undefined) product.fit = String(fit).trim()
+    if (sleeve !== undefined) product.sleeve = String(sleeve).trim()
+    if (neck !== undefined) product.neck = String(neck).trim()
+    if (refundPolicy !== undefined) product.refundPolicy = String(refundPolicy).trim()
 
     // Handle uploaded images if any
     if (req.files && req.files.length > 0) {
