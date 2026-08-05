@@ -25,6 +25,10 @@ const sellerSchema = new mongoose.Schema({
   },
   shopLogo: String,
   idProof: String,
+  gstNumber: String,
+  website: String,
+  categories: String,
+  yearEstablished: String,
   description: String,
   adminNote: String,
   status: {

@@ -78,7 +78,19 @@ const getDateLabels = (period) => {
 
 exports.applyAsSeller = async (req, res) => {
   try {
-    const { shopName, ownerName, phone, address, businessType, bankDetails } = req.body
+    const {
+      shopName,
+      ownerName,
+      phone,
+      address,
+      businessType,
+      bankDetails,
+      gstNumber,
+      website,
+      categories,
+      yearEstablished,
+      description
+    } = req.body
     
     // Check if seller already exists for this user
     const existingSeller = await Seller.findOne({ userId: req.user._id })
@@ -114,9 +126,14 @@ exports.applyAsSeller = async (req, res) => {
       email: req.user.email,
       phone,
       address: {
-        street: address // storing full address in street for simplicity
+        street: address
       },
       businessType,
+      gstNumber,
+      website,
+      categories,
+      yearEstablished,
+      description,
       shopLogo: shopLogoUrl,
       idProof: idProofUrl,
       bankDetails: parsedBankDetails,
