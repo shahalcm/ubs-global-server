@@ -23,7 +23,7 @@ exports.getProfile = async (req, res) => {
 // Update Profile
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, email, phone } = req.body
+    const { name, email, phone, language, address } = req.body
     const user = req.user
 
     if (name !== undefined) user.name = name.trim()
@@ -49,6 +49,18 @@ exports.updateProfile = async (req, res) => {
           return res.status(400).json({ success: false, message: 'Phone number already in use' })
         }
         user.phone = phoneTrimmed
+      }
+    }
+
+    if (language !== undefined) user.language = language
+
+    if (address !== undefined && typeof address === 'object') {
+      user.address = {
+        street: address.street !== undefined ? address.street.trim() : user.address?.street,
+        city: address.city !== undefined ? address.city.trim() : user.address?.city,
+        state: address.state !== undefined ? address.state.trim() : user.address?.state,
+        country: address.country !== undefined ? address.country.trim() : user.address?.country,
+        zipCode: address.zipCode !== undefined ? address.zipCode.trim() : user.address?.zipCode
       }
     }
 

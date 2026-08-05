@@ -182,10 +182,7 @@ exports.getAIReply = async (
 ) => {
   try {
     // Get or create bot session
-    let session = await BotSession.findOne({
-      chatRoomId,
-      botActive: true
-    })
+    let session = await BotSession.findOne({ chatRoomId })
 
     if (!session) {
       // Build context from product/seller/property
@@ -237,6 +234,13 @@ exports.getAIReply = async (
         context,
         conversationHistory: []
       })
+    } else {
+      // Always ensure bot is active when buyer sends a message
+      if (!session.botActive) {
+        session.botActive = true
+        session.deactivatedReason = null
+        await session.save()
+      }
     }
 
     // Get bot config for this seller
@@ -364,7 +368,14 @@ exports.isBotActive = async (chatRoomId) => {
   if (!session) {
     return true // Default to active if no session exists yet
   }
-  return session.botActive
+  // Only respect seller takeover if seller took over in the last 2 minutes
+  if (session.botActive === false && session.deactivatedReason === 'seller_takeover') {
+    const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000)
+    if (session.updatedAt && session.updatedAt > twoMinsAgo) {
+      return false
+    }
+  }
+  return true
 }
 
 // Get bot session

@@ -41,20 +41,117 @@ exports.signup = async (req, res) => {
   res.status(201).json({ success: true, token, user })
 }
 
-// Login
+// Login (supports both password and phone lookup)
 exports.login = async (req, res) => {
-  const { phone, otp } = req.body
-  const user = await User.findOne({ phone })
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: 'User not found'
-    })
+  try {
+    const { phone, email, password } = req.body
+
+    let query = {}
+    if (phone) query.phone = phone.trim()
+    else if (email) query.email = email.trim().toLowerCase()
+    else {
+      return res.status(400).json({ success: false, message: 'Phone number or email is required' })
+    }
+
+    const user = await User.findOne(query).select('+password')
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with these credentials. Please check or sign up.'
+      })
+    }
+
+    // If password provided, verify password
+    if (password) {
+      if (!user.password) {
+        return res.status(400).json({
+          success: false,
+          message: 'No password set for this account. Please login using OTP.'
+        })
+      }
+      const isMatch = await bcrypt.compare(password, user.password)
+      if (!isMatch) {
+        return res.status(400).json({
+          success: false,
+          message: 'Incorrect password. Please try again or click Forgot Password.'
+        })
+      }
+    }
+
+    const token = generateUserToken(user._id)
+    user.lastLogin = new Date()
+    await user.save()
+
+    user.password = undefined
+
+    res.json({ success: true, token, user })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
   }
-  const token = generateUserToken(user._id)
-  user.lastLogin = new Date()
-  await user.save()
-  res.json({ success: true, token, user })
+}
+
+// Forgot Password - Send OTP to registered user
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { phone } = req.body
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' })
+    }
+
+    const user = await User.findOne({ phone: phone.trim() })
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No registered account found with this phone number. Please check or sign up.'
+      })
+    }
+
+    const otp = await sendOTP(phone.trim())
+    if (process.env.NODE_ENV === 'development') {
+      res.json({ success: true, message: 'OTP sent for password reset', otp })
+    } else {
+      res.json({ success: true, message: 'OTP sent for password reset' })
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Reset Password with OTP
+exports.resetPasswordOtp = async (req, res) => {
+  try {
+    const { phone, otp, newPassword } = req.body
+    if (!phone || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Phone, OTP, and new password are required' })
+    }
+
+    const isValid = await verifyOTP(phone.trim(), otp)
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
+    }
+
+    const user = await User.findOne({ phone: phone.trim() }).select('+password')
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' })
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12)
+    user.password = hashedPassword
+    user.lastLogin = new Date()
+    await user.save()
+
+    const token = generateUserToken(user._id)
+    user.password = undefined
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully. You are now logged in.',
+      token,
+      user
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
 }
 
 // Admin login
