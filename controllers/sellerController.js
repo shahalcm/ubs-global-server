@@ -119,6 +119,11 @@ exports.applyAsSeller = async (req, res) => {
       }
     }
 
+    const SystemConfig = require('../models/SystemConfig')
+    const Transaction = require('../models/Transaction')
+    const config = await SystemConfig.findOne()
+    const feeAmount = Number(req.body.registrationFeeAmount) || config?.storeRegistrationFee || 15
+
     const seller = new Seller({
       userId: req.user._id,
       shopName,
@@ -137,10 +142,27 @@ exports.applyAsSeller = async (req, res) => {
       shopLogo: shopLogoUrl,
       idProof: idProofUrl,
       bankDetails: parsedBankDetails,
+      registrationFeePaid: true,
+      registrationFeeAmount: feeAmount,
+      registrationFeeTransactionId: `TXN-REG-${Date.now()}`,
       status: 'pending'
     })
 
     await seller.save()
+
+    // Record transaction credited directly to Admin Earnings
+    await Transaction.create({
+      sellerId: seller._id,
+      buyerId: req.user._id,
+      grossAmount: feeAmount,
+      commissionPercent: 100,
+      commissionAmount: feeAmount,
+      sellerEarnings: 0,
+      adminEarnings: feeAmount,
+      paymentMethod: req.body.paymentMethod || 'Online Payment',
+      status: 'completed',
+      paidAt: new Date()
+    })
 
     // Optionally update user role to seller
     // await User.findByIdAndUpdate(req.user._id, { role: 'seller' })
@@ -469,6 +491,17 @@ exports.updateSellerProfile = async (req, res) => {
   } catch (error) {
     console.error('Update seller profile error:', error)
     res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.getRegistrationFee = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig')
+    const config = await SystemConfig.findOne()
+    const fee = config?.storeRegistrationFee ?? 15
+    res.json({ success: true, registrationFee: fee })
+  } catch (error) {
+    res.json({ success: true, registrationFee: 15 })
   }
 }
 

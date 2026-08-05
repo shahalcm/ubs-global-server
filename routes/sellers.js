@@ -4,6 +4,8 @@ const sellerController = require('../controllers/sellerController');
 const { protect } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 
+router.get('/registration-fee', sellerController.getRegistrationFee);
+
 router.post('/apply', protect, upload.fields([
   { name: 'shopLogo', maxCount: 1 },
   { name: 'idProof', maxCount: 1 }

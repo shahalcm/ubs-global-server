@@ -37,6 +37,9 @@ const sellerSchema = new mongoose.Schema({
     default: 'pending'
   },
   isVerified: { type: Boolean, default: false },
+  registrationFeePaid: { type: Boolean, default: false },
+  registrationFeeAmount: { type: Number, default: 0 },
+  registrationFeeTransactionId: String,
   rating: { type: Number, default: 0 },
   totalReviews: { type: Number, default: 0 },
   totalSales: { type: Number, default: 0 },
