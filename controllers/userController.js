@@ -682,9 +682,20 @@ exports.getRecentlyViewed = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' })
     }
 
-    const products = (user.recentlyViewed || [])
-      .filter(item => item && item.product)
-      .map(item => item.product)
+    const validItems = (user.recentlyViewed || []).filter(
+      item => item && item.product && item.product._id && !item.product.isDeleted && item.product.status !== 'inactive'
+    )
+
+    // Clean up stale deleted references if any exist
+    if (validItems.length !== (user.recentlyViewed || []).length) {
+      user.recentlyViewed = validItems.map(item => ({
+        product: item.product._id,
+        viewedAt: item.viewedAt
+      }))
+      await user.save().catch(e => console.error('Failed to cleanup stale recentlyViewed:', e))
+    }
+
+    const products = validItems.map(item => item.product)
 
     res.json({
       success: true,
@@ -708,8 +719,8 @@ exports.addRecentlyViewed = async (req, res) => {
     const Product = require('../models/Product')
 
     const productExists = await Product.findById(productId)
-    if (!productExists) {
-      return res.status(404).json({ success: false, message: 'Product not found' })
+    if (!productExists || productExists.isDeleted || productExists.status === 'inactive') {
+      return res.status(404).json({ success: false, message: 'Product not found or inactive' })
     }
 
     const user = await User.findById(req.user._id)
@@ -745,7 +756,7 @@ exports.addRecentlyViewed = async (req, res) => {
       })
 
     const products = (updatedUser.recentlyViewed || [])
-      .filter(item => item && item.product)
+      .filter(item => item && item.product && item.product._id && !item.product.isDeleted && item.product.status !== 'inactive')
       .map(item => item.product)
 
     res.json({
