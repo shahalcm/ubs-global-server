@@ -55,45 +55,53 @@ module.exports = (io) => {
           preview: message.text?.substring(0, 50)
         })
 
-        // Only trigger initial AI welcome reply on buyer's FIRST message
+        // Trigger AI Assistant reply if message is from buyer
         if (message.senderType === 'buyer') {
           const chatRoom = await ChatRoom.findById(roomId)
+          const { isBotActive, getAIReply } = require('../services/aiChatService')
+          const botActive = await isBotActive(roomId)
 
-          // Check how many bot messages exist for this room
-          const botMsgCount = await Message.countDocuments({
-            chatRoomId: roomId,
-            senderType: 'bot'
-          })
+          if (botActive) {
+            // Show typing indicator
+            io.to(roomId).emit('botTyping', { roomId, isTyping: true })
 
-          if (botMsgCount === 0) {
-            const BotConfig = require('../models/BotConfig')
-            let botConfig = null
-            if (chatRoom?.sellerId) {
-              botConfig = await BotConfig.findOne({ sellerId: chatRoom.sellerId })
+            const roomContext = {
+              buyerId: message.senderId,
+              sellerId: chatRoom?.sellerId,
+              productId: chatRoom?.productId || chatRoom?.meta?.productId,
+              propertyId: chatRoom?.meta?.propertyId
             }
 
-            const welcomeText = botConfig?.welcomeMessage || "Hello! 👋 Thank you for reaching out to UBS Global. How can we help you with your order, pricing, or product inquiry today?"
-            const botName = botConfig?.botName || "UBS Assistant"
+            await new Promise(resolve => setTimeout(resolve, 800))
 
-            // Show typing indicator briefly
-            io.to(roomId).emit('botTyping', { roomId, isTyping: true })
-            await new Promise(resolve => setTimeout(resolve, 1000))
+            const aiResponse = await getAIReply(roomId, message.text, roomContext)
+
             io.to(roomId).emit('botTyping', { roomId, isTyping: false })
 
-            const welcomeMsg = await Message.create({
-              chatRoomId: roomId,
-              senderType: 'bot',
-              senderName: botName,
-              messageType: 'text',
-              text: welcomeText,
-              isBot: true
-            })
+            if (aiResponse && aiResponse.reply) {
+              const BotConfig = require('../models/BotConfig')
+              let botConfig = null
+              if (chatRoom?.sellerId) {
+                botConfig = await BotConfig.findOne({ sellerId: chatRoom.sellerId })
+              }
 
-            io.to(roomId).emit('receiveMessage', welcomeMsg)
+              const botMessage = await Message.create({
+                chatRoomId: roomId,
+                senderType: 'bot',
+                senderName: botConfig?.botName || 'UBS Assistant',
+                messageType: 'text',
+                text: aiResponse.reply,
+                isBot: true
+              })
 
-            // Deactivate bot for this room after first welcome response
-            const { deactivateBot } = require('../services/aiChatService')
-            await deactivateBot(roomId, 'first_welcome_sent')
+              await ChatRoom.findByIdAndUpdate(roomId, {
+                lastMessage: aiResponse.reply,
+                lastMessageAt: new Date(),
+                lastMessageBy: 'bot'
+              })
+
+              io.to(roomId).emit('receiveMessage', botMessage)
+            }
           }
         }
 

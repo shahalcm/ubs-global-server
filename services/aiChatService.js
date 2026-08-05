@@ -18,16 +18,14 @@ function buildSmartFallbackReply(buyerMessage, context, botConfig) {
   const prodDesc = context?.productDescription;
   const propTitle = context?.propertyTitle;
   const propPrice = context?.propertyPrice;
+  const customWelcome = botConfig?.welcomeMessage;
 
-  // Greetings
-  if (/^(hi|hello|hey|greetings|hola|namaste|good morning|good evening|hey there)/i.test(msg)) {
-    if (prodName) {
-      return `Hello! 👋 Welcome to ${shopName}. How can I assist you with "${prodName}" today?`;
+  // Greetings / First Messages
+  if (/^(hi|hello|hey|greetings|hola|namaste|good morning|good evening|hey there)/i.test(msg) || msg.length <= 4) {
+    if (customWelcome && customWelcome.trim()) {
+      return customWelcome.trim();
     }
-    if (propTitle) {
-      return `Hello! 👋 Welcome to ${shopName}. Are you interested in learning more about "${propTitle}"?`;
-    }
-    return `Hello! 👋 I'm UBS Assistant representing ${shopName}. How can I help you today?`;
+    return `Hello! 👋 Thank you for reaching out to UBS Global. How can we help you with your order, pricing, or product inquiry today?`;
   }
 
   // Price & Discount inquiries
@@ -73,14 +71,15 @@ function buildSmartFallbackReply(buyerMessage, context, botConfig) {
   }
 
   // Default response
+  if (customWelcome && customWelcome.trim()) {
+    return customWelcome.trim();
+  }
+
   if (prodName) {
     return `Thank you for asking about "${prodName}"! ${shopName} team is happy to assist. Let us know if you need info on price, specs, or shipping! 😊`;
   }
-  if (propTitle) {
-    return `Thank you for your interest in "${propTitle}"! Let us know if you'd like to schedule a viewing or request more property information! 🏡`;
-  }
 
-  return `Thank you for your message! ${shopName} is here to assist you with any questions. How can we help you today? 😊`;
+  return `Hello! 👋 Thank you for reaching out to UBS Global. How can we help you with your order, pricing, or product inquiry today?`;
 }
 
 // Build system prompt for bot
