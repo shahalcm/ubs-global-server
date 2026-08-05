@@ -55,110 +55,45 @@ module.exports = (io) => {
           preview: message.text?.substring(0, 50)
         })
 
-        // Only trigger AI if message is from buyer
+        // Only trigger initial AI welcome reply on buyer's FIRST message
         if (message.senderType === 'buyer') {
-          // Get chat room context
           const chatRoom = await ChatRoom.findById(roomId)
 
-          const roomContext = {
-            buyerId: message.senderId,
-            sellerId: chatRoom?.sellerId,
-            productId: chatRoom?.productId || chatRoom?.meta?.productId,
-            propertyId: chatRoom?.meta?.propertyId
-          }
+          // Check how many bot messages exist for this room
+          const botMsgCount = await Message.countDocuments({
+            chatRoomId: roomId,
+            senderType: 'bot'
+          })
 
-          // Check if bot is active
-          const botActive = await isBotActive(roomId)
-
-          if (botActive) {
-            // Show typing indicator
-            io.to(roomId).emit('botTyping', {
-              roomId,
-              isTyping: true
-            })
-
-            // Small delay to feel natural
-            await new Promise(resolve => setTimeout(resolve, 1500))
-
-            // Get AI reply
-            const aiResponse = await getAIReply(
-              roomId,
-              message.text,
-              roomContext
-            )
-
-            // Hide typing indicator
-            io.to(roomId).emit('botTyping', {
-              roomId,
-              isTyping: false
-            })
-
-            if (aiResponse.success) {
-              if (aiResponse.takeover) {
-                // Send takeover message
-                const takeoverMsg = await Message.create({
-                  chatRoomId: roomId,
-                  senderType: 'bot',
-                  senderName: 'UBS Assistant',
-                  messageType: 'text',
-                  text: aiResponse.message,
-                  isBot: true,
-                  isTakeover: true
-                })
-
-                io.to(roomId).emit('receiveMessage', takeoverMsg)
-
-                io.to('admin-room').emit('chatActivity', {
-                  roomId,
-                  senderType: 'bot',
-                  preview: aiResponse.message?.substring(0, 50)
-                })
-
-                // Notify seller to take over
-                if (chatRoom?.sellerId) {
-                  let sellerUserId = null
-                  if (chatRoom.sellerModel === 'User') {
-                    sellerUserId = chatRoom.sellerId.toString()
-                  } else {
-                    const seller = await Seller.findById(chatRoom.sellerId)
-                    if (seller) {
-                      sellerUserId = seller.userId?.toString()
-                    }
-                  }
-                  if (sellerUserId) {
-                    io.to(sellerUserId).emit('botHandover', {
-                      roomId,
-                      reason: aiResponse.takeoverReason,
-                      message: 'Bot has handed over to you. Please respond.'
-                    })
-                  }
-                }
-              } else {
-                // Save and send AI reply
-                const botMessage = await Message.create({
-                  chatRoomId: roomId,
-                  senderType: 'bot',
-                  senderName: 'UBS Assistant',
-                  messageType: 'text',
-                  text: aiResponse.reply,
-                  isBot: true
-                })
-
-                await ChatRoom.findByIdAndUpdate(roomId, {
-                  lastMessage: aiResponse.reply,
-                  lastMessageAt: new Date(),
-                  lastMessageBy: 'bot'
-                })
-
-                io.to(roomId).emit('receiveMessage', botMessage)
-
-                io.to('admin-room').emit('chatActivity', {
-                  roomId,
-                  senderType: 'bot',
-                  preview: aiResponse.reply?.substring(0, 50)
-                })
-              }
+          if (botMsgCount === 0) {
+            const BotConfig = require('../models/BotConfig')
+            let botConfig = null
+            if (chatRoom?.sellerId) {
+              botConfig = await BotConfig.findOne({ sellerId: chatRoom.sellerId })
             }
+
+            const welcomeText = botConfig?.welcomeMessage || "Hello! 👋 Thank you for reaching out to UBS Global. How can we help you with your order, pricing, or product inquiry today?"
+            const botName = botConfig?.botName || "UBS Assistant"
+
+            // Show typing indicator briefly
+            io.to(roomId).emit('botTyping', { roomId, isTyping: true })
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            io.to(roomId).emit('botTyping', { roomId, isTyping: false })
+
+            const welcomeMsg = await Message.create({
+              chatRoomId: roomId,
+              senderType: 'bot',
+              senderName: botName,
+              messageType: 'text',
+              text: welcomeText,
+              isBot: true
+            })
+
+            io.to(roomId).emit('receiveMessage', welcomeMsg)
+
+            // Deactivate bot for this room after first welcome response
+            const { deactivateBot } = require('../services/aiChatService')
+            await deactivateBot(roomId, 'first_welcome_sent')
           }
         }
 
