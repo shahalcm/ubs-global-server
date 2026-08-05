@@ -25,23 +25,35 @@ exports.getCart = async (req, res) => {
     // Calculate totals
     let subtotal = 0
     let shippingTotal = 0
+    let hasOutOfStockItems = false
     const validItems = []
 
     for (const item of cart.items) {
       if (!item.productId) continue
       const product = item.productId
-      if (product.stock < item.quantity) continue
+      const isOutOfStock = product.stock === 0 || product.stock === undefined
+      const stockLimitExceeded = product.stock < item.quantity
 
-      const itemTotal = product.price * item.quantity
-      subtotal += itemTotal
+      if (isOutOfStock || stockLimitExceeded) {
+        hasOutOfStockItems = true
+      }
 
-      if (!product.freeShipping) {
-        shippingTotal += product.shippingFee || 0
+      const itemTotal = (product.price || 0) * item.quantity
+
+      // Only include in subtotal if in stock
+      if (!isOutOfStock) {
+        subtotal += itemTotal
+        if (!product.freeShipping) {
+          shippingTotal += product.shippingFee || 0
+        }
       }
 
       validItems.push({
         ...item.toObject(),
-        itemTotal
+        itemTotal,
+        isOutOfStock,
+        stockLimitExceeded,
+        availableStock: product.stock || 0
       })
     }
 
@@ -56,7 +68,8 @@ exports.getCart = async (req, res) => {
         shippingTotal: shippingTotal.toFixed(2),
         tax: tax.toFixed(2),
         grandTotal: grandTotal.toFixed(2),
-        itemCount: validItems.length
+        itemCount: validItems.length,
+        hasOutOfStockItems
       }
     })
   } catch (error) {
@@ -79,10 +92,18 @@ exports.addToCart = async (req, res) => {
       })
     }
 
+    if (product.stock === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'This product is currently Out of Stock',
+        isOutOfStock: true
+      })
+    }
+
     if (product.stock < quantity) {
       return res.status(400).json({
         success: false,
-        message: 'Insufficient stock'
+        message: `Only ${product.stock} units available in stock`
       })
     }
 
@@ -102,7 +123,12 @@ exports.addToCart = async (req, res) => {
     )
 
     if (existingIndex > -1) {
-      cart.items[existingIndex].quantity += quantity
+      const newQty = cart.items[existingIndex].quantity + quantity
+      if (product.stock < newQty) {
+        cart.items[existingIndex].quantity = product.stock
+      } else {
+        cart.items[existingIndex].quantity = newQty
+      }
     } else {
       cart.items.push({
         productId,
@@ -116,7 +142,7 @@ exports.addToCart = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Added to cart',
+      message: 'Added to cart successfully 🛒',
       itemCount: cart.items.length
     })
   } catch (error) {
@@ -130,15 +156,19 @@ exports.addToCart = async (req, res) => {
 exports.updateCartItem = async (req, res) => {
   try {
     const { productId, quantity } = req.body
-    if (quantity < 1) return res.status(400).json({ success: false, message: 'Invalid quantity' })
     let cart = await Cart.findOne({ buyerId: req.user._id })
     if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' })
+
     const index = cart.items.findIndex(item => item.productId.toString() === productId)
     if (index > -1) {
-      cart.items[index].quantity = quantity
+      if (quantity <= 0) {
+        cart.items.splice(index, 1)
+      } else {
+        cart.items[index].quantity = quantity
+      }
       await cart.save()
     }
-    res.json({ success: true, message: 'Cart updated' })
+    res.json({ success: true, message: 'Cart updated successfully' })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
