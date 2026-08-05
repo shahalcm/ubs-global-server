@@ -12,7 +12,7 @@ const anthropic = new Anthropic({
 // Smart Fallback Engine when LLM API is unavailable or throws errors
 function buildSmartFallbackReply(buyerMessage, context, botConfig) {
   const msg = (buyerMessage || '').toLowerCase().trim();
-  const shopName = context?.sellerShopName || botConfig?.botName || 'UBS Global Shop';
+  const shopName = context?.sellerShopName || botConfig?.botName || 'UBS Global';
   const prodName = context?.productName;
   const prodPrice = context?.productPrice;
   const prodDesc = context?.productDescription;
@@ -27,7 +27,7 @@ function buildSmartFallbackReply(buyerMessage, context, botConfig) {
     if (propTitle) {
       return `Hello! 👋 Welcome to ${shopName}. Are you interested in learning more about "${propTitle}"?`;
     }
-    return `Hello! 👋 Welcome to ${shopName}. How can I help you today?`;
+    return `Hello! 👋 I'm UBS Assistant representing ${shopName}. How can I help you today?`;
   }
 
   // Price & Discount inquiries
@@ -38,51 +38,43 @@ function buildSmartFallbackReply(buyerMessage, context, botConfig) {
     if (propPrice) {
       return `The listed price for "${propTitle}" is $${propPrice}. 🏡`;
     }
-    return `For pricing details on this item from ${shopName}, please check the listing card or ask us for a quote!`;
+    return `For pricing and wholesale quote details from ${shopName}, please check the product details or let us know your required volume!`;
   }
 
   // Stock / Availability
-  if (msg.includes('stock') || msg.includes('available') || msg.includes('in stock') || msg.includes('quantity')) {
+  if (msg.includes('stock') || msg.includes('available') || msg.includes('quantity') || msg.includes('in stock')) {
     if (prodName) {
       return `Yes! "${prodName}" is listed by ${shopName}. You can check live availability and place an order on the product page! 📦`;
     }
-    return `Items listed by ${shopName} are ready for order. Let us know how many units you require!`;
+    return `Products from ${shopName} are in stock and ready for global dispatch. Let us know how many units you need!`;
   }
 
   // Shipping & Delivery
-  if (msg.includes('ship') || msg.includes('deliver') || msg.includes('courier') || msg.includes('location') || msg.includes('dispatch') || msg.includes('country') || msg.includes('origin')) {
+  if (msg.includes('ship') || msg.includes('deliver') || msg.includes('dispatch') || msg.includes('country') || msg.includes('courier')) {
     if (context?.propertyLocation) {
       return `This property is located at ${context.propertyLocation}. 📍`;
     }
-    return `We provide worldwide shipping via UBS Global logistics! Standard delivery usually takes 3-7 business days depending on your location. ✈️📦`;
+    return `We offer worldwide shipping via UBS Global logistics! Standard delivery usually takes 3-7 business days depending on destination. ✈️📦`;
   }
 
-  // Warranty & Returns
-  if (msg.includes('warranty') || msg.includes('return') || msg.includes('refund') || msg.includes('policy')) {
-    return `All orders through ${shopName} on UBS Global are backed by Buyer Protection and return policies! Feel free to ask if you have specific policy questions. 🛡️`;
-  }
-
-  // Ordering / Buying
+  // Buying / Checkout
   if (msg.includes('buy') || msg.includes('order') || msg.includes('purchase') || msg.includes('cart') || msg.includes('checkout')) {
     if (prodName) {
-      return `You can buy "${prodName}" right now by clicking the "Buy Now" or "Add to Cart" button on the product details page! 🛒✨`;
+      return `You can buy "${prodName}" right now by tapping "Buy Now" or "Add to Cart" on the product details page! 🛒✨`;
     }
     return `To purchase, simply use the "Buy Now" or "Add to Cart" button on the item page! 🛒`;
   }
 
   // Specifications
-  if (msg.includes('spec') || msg.includes('detail') || msg.includes('material') || msg.includes('feature') || msg.includes('size') || msg.includes('color') || msg.includes('brand')) {
+  if (msg.includes('spec') || msg.includes('detail') || msg.includes('material') || msg.includes('feature') || msg.includes('size')) {
     if (prodDesc) {
       return `Here are details for "${prodName}": ${prodDesc.substring(0, 160)}... 📋`;
     }
-    if (context?.propertyDescription) {
-      return `Here are details for "${propTitle}": ${context.propertyDescription.substring(0, 160)}... 🏡`;
-    }
   }
 
-  // Default context response
+  // Default response
   if (prodName) {
-    return `Thank you for reaching out about "${prodName}"! ${shopName} team is here to help. Is there anything specific about pricing, specifications, or shipping you'd like to know? 😊`;
+    return `Thank you for asking about "${prodName}"! ${shopName} team is happy to assist. Let us know if you need info on price, specs, or shipping! 😊`;
   }
   if (propTitle) {
     return `Thank you for your interest in "${propTitle}"! Let us know if you'd like to schedule a viewing or request more property information! 🏡`;
