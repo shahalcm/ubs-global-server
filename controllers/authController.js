@@ -125,7 +125,7 @@ exports.resetPasswordOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Phone, OTP, and new password are required' })
     }
 
-    const isValid = await verifyOTP(phone.trim(), otp)
+    const isValid = await verifyOTP(phone.trim(), otp, true)
     if (!isValid) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
     }

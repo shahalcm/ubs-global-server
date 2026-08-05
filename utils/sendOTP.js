@@ -37,7 +37,7 @@ exports.sendOTP = async (phone) => {
   return otp
 }
 
-exports.verifyOTP = async (phone, otp) => {
+exports.verifyOTP = async (phone, otp, allowRecentlyUsed = false) => {
   // Allow a default bypass OTP in development environment, or for the test phone number in production
   if (
     (process.env.NODE_ENV === 'development' || phone === '+917777777777') &&
@@ -46,14 +46,20 @@ exports.verifyOTP = async (phone, otp) => {
     return true
   }
 
-  const record = await OTP.findOne({
+  const query = {
     phone,
     otp,
-    isUsed: false,
     expiresAt: { $gt: new Date() }
-  })
+  }
+  if (!allowRecentlyUsed) {
+    query.isUsed = false
+  }
+
+  const record = await OTP.findOne(query)
   if (!record) return false
-  record.isUsed = true
-  await record.save()
+  if (!record.isUsed) {
+    record.isUsed = true
+    await record.save()
+  }
   return true
 }
