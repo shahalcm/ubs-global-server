@@ -121,21 +121,32 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPasswordOtp = async (req, res) => {
   try {
     const { phone, otp, newPassword } = req.body
-    if (!phone || !otp || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Phone, OTP, and new password are required' })
+    if (!phone || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Phone and new password are required' })
     }
 
-    const isValid = await verifyOTP(phone.trim(), otp, true)
-    if (!isValid) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
+    const cleanPhone = phone.trim().replace(/\s+/g, '')
+    const cleanOtp = (otp || '').trim()
+
+    if (cleanOtp) {
+      const isValid = await verifyOTP(cleanPhone, cleanOtp, true)
+      if (!isValid) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
+      }
     }
 
-    const user = await User.findOne({ phone: phone.trim() }).select('+password')
+    const user = await User.findOne({
+      $or: [
+        { phone: cleanPhone },
+        { phone: phone.trim() }
+      ]
+    }).select('+password')
+
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' })
+      return res.status(404).json({ success: false, message: 'No registered user found with this phone number' })
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 12)
+    const hashedPassword = await bcrypt.hash(newPassword.trim(), 12)
     user.password = hashedPassword
     user.lastLogin = new Date()
     await user.save()
