@@ -60,11 +60,32 @@ exports.getMessages = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }
 
-    const messages = await Message.find({ chatRoomId: roomId, isDeleted: false })
+    let messages = await Message.find({ chatRoomId: roomId, isDeleted: false })
       .sort({ createdAt: 1 })
 
     const { isBotActive } = require('../services/aiChatService')
     const botActive = await isBotActive(roomId)
+
+    // If chat room has NO messages yet, send initial welcome message from UBS Assistant!
+    if (messages.length === 0) {
+      const BotConfig = require('../models/BotConfig')
+      let botConfig = null
+      if (room.sellerId) {
+        botConfig = await BotConfig.findOne({ sellerId: room.sellerId })
+      }
+      const welcomeText = botConfig?.welcomeMessage || "Hello! 👋 I'm UBS Assistant. How can I help you with product info, pricing, or shipping today?"
+      const botName = botConfig?.botName || "UBS Assistant"
+
+      const welcomeMsg = await Message.create({
+        chatRoomId: roomId,
+        senderType: 'bot',
+        senderName: botName,
+        messageType: 'text',
+        text: welcomeText,
+        isBot: true
+      })
+      messages = [welcomeMsg]
+    }
 
     res.json({ success: true, room, messages, botActive })
   } catch (error) {
