@@ -159,23 +159,22 @@ exports.createRazorpayOrder = async (req, res) => {
 
     // Create Razorpay order (always in INR for Razorpay SDK compatibility)
     let razorpayOrder
-    if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'rzp_test_your_key_id' || process.env.RAZORPAY_KEY_ID === 'rzp_test_placeholder') {
-      razorpayOrder = { id: `order_mock_${Date.now()}` }
-    } else {
-      try {
-        razorpayOrder = await razorpay.orders.create({
-          amount: amountInPaise,
-          currency: 'INR',
-          receipt: `receipt_${Date.now()}`,
-          notes: {
-            buyerId: req.user._id.toString(),
-            sellerId: targetSellerId ? targetSellerId.toString() : ''
-          }
-        })
-      } catch (rzpErr) {
-        console.error('Razorpay SDK order creation error, falling back to mock:', rzpErr.message)
-        razorpayOrder = { id: `order_mock_${Date.now()}` }
-      }
+    try {
+      razorpayOrder = await razorpay.orders.create({
+        amount: amountInPaise,
+        currency: 'INR',
+        receipt: `receipt_${Date.now()}`,
+        notes: {
+          buyerId: req.user._id.toString(),
+          sellerId: targetSellerId ? targetSellerId.toString() : ''
+        }
+      })
+    } catch (rzpErr) {
+      console.error('❌ Razorpay SDK order creation error:', rzpErr.message || rzpErr)
+      return res.status(500).json({
+        success: false,
+        message: `Failed to create Razorpay payment order: ${rzpErr.message || 'Razorpay API error'}`
+      })
     }
 
     // Create pending order in DB
@@ -247,39 +246,33 @@ exports.verifyPayment = async (req, res) => {
       orderId
     } = req.body
 
-    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !orderId) {
       return res.status(400).json({
         success: false,
-        message: 'Razorpay order ID, payment ID, and signature are required for verification'
+        message: 'Missing required Razorpay payment verification parameters'
       })
     }
 
-    const secret = process.env.RAZORPAY_KEY_SECRET || 'LgM5XP1D5C17BHQthHfmLNxS'
+    // Verify HMAC SHA256 signature
     const body = razorpayOrderId + '|' + razorpayPaymentId
     const expectedSignature = crypto
-      .createHmac('sha256', secret)
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
       .update(body.toString())
       .digest('hex')
 
+    console.log('💳 [Backend Razorpay Signature Verification Audit]:', {
+      receivedOrderId: razorpayOrderId,
+      receivedPaymentId: razorpayPaymentId,
+      receivedSignature: razorpaySignature,
+      expectedSignature: expectedSignature,
+      match: expectedSignature === razorpaySignature
+    })
+
     if (expectedSignature !== razorpaySignature) {
-      console.error('❌ Invalid Razorpay signature verification for order:', orderId)
+      console.error('❌ Razorpay HMAC signature mismatch verification failed!')
       return res.status(400).json({
         success: false,
         message: 'Invalid payment signature verification failed'
-      })
-    }
-
-    // Check if order exists and idempotency check
-    const existingOrder = await Order.findById(orderId)
-    if (!existingOrder) {
-      return res.status(404).json({ success: false, message: 'Order not found for verification' })
-    }
-
-    if (existingOrder.paymentStatus === 'paid') {
-      return res.json({
-        success: true,
-        message: 'Order is already verified and paid',
-        order: existingOrder
       })
     }
 
@@ -289,8 +282,8 @@ exports.verifyPayment = async (req, res) => {
       {
         paymentStatus: 'paid',
         orderStatus: 'placed',
-        razorpayPaymentId: razorpayPaymentId,
-        razorpaySignature: razorpaySignature,
+        razorpayPaymentId: razorpayPaymentId || `pay_verified_${Date.now()}`,
+        razorpaySignature: razorpaySignature || `sig_verified_${Date.now()}`,
         paidAt: new Date(),
         $push: {
           timeline: {
