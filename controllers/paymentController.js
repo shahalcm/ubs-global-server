@@ -188,7 +188,7 @@ exports.createRazorpayOrder = async (req, res) => {
       tax: Number(tax.toFixed(2)),
       grandTotal: Number(finalGrandTotal.toFixed(2)),
       paymentMethod: 'razorpay',
-      paymentCurrency: currency,
+      paymentCurrency: userCurrency,
       paymentStatus: 'pending',
       razorpayOrderId: razorpayOrder.id,
       commissionPercent,
