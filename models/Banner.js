@@ -1,11 +1,12 @@
 const mongoose = require('mongoose')
 const bannerSchema = new mongoose.Schema({
   title: String,
+  subtitle: String,
   image: String,
   linkUrl: String,
   position: {
     type: String,
-    enum: ['top','middle','bottom'],
+    enum: ['top', 'middle', 'bottom', 'realestate'],
     default: 'top'
   },
   isActive: { type: Boolean, default: true },
