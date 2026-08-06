@@ -22,6 +22,8 @@ router.get('/dashboard-stats', protect, sellerController.getDashboardStats);
 router.get('/earnings', protect, sellerController.getEarnings);
 
 // Recent orders
+router.get('/recent-orders', protect, sellerController.getRecentOrders);
+
 // Pickup Addresses
 router.get('/pickup-addresses', protect, sellerController.getPickupAddresses);
 router.post('/pickup-addresses', protect, sellerController.addPickupAddress);

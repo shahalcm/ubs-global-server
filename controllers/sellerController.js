@@ -199,7 +199,7 @@ exports.getSellerProfile = async (req, res) => {
 // Get dashboard stats for seller
 exports.getDashboardStats = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
+    const seller = await Seller.findOne({ userId: req.user._id })
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller not found' })
     }
@@ -300,7 +300,7 @@ exports.getDashboardStats = async (req, res) => {
 // Get earnings analytics
 exports.getEarnings = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
+    const seller = await Seller.findOne({ userId: req.user._id })
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller not found' })
     }
@@ -407,7 +407,7 @@ exports.getEarnings = async (req, res) => {
 // Get recent orders
 exports.getRecentOrders = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ userId: req.user._id, status: 'approved' })
+    const seller = await Seller.findOne({ userId: req.user._id })
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller not found' })
     }
