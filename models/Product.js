@@ -28,6 +28,10 @@ const productSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  priceUSD: {
+    type: Number,
+    min: 0
+  },
   comparePrice: Number,
   costPerItem: Number,
   stock: {

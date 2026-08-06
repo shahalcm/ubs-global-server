@@ -9,6 +9,11 @@ const sellerSchema = new mongoose.Schema({
   ownerName: { type: String, required: true },
   email: String,
   phone: String,
+  preferredDisplayCurrency: {
+    type: String,
+    enum: ['USD', 'INR', 'EUR', 'GBP', 'AED'],
+    default: 'USD'
+  },
   businessType: {
     type: String,
     enum: [

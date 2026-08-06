@@ -25,13 +25,32 @@ const orderSchema = new mongoose.Schema({
     productSku: String,
     quantity: Number,
     price: Number,
+    priceUSD: Number,
+    displayPrice: Number,
     subtotal: Number
   }],
-  // Pricing breakdown
+  // Pricing breakdown (stored in USD base)
   subtotal: Number,
   shippingFee: Number,
   tax: Number,
   grandTotal: Number,
+
+  // Multi-Currency & Geo Metadata
+  buyerCurrency: { type: String, default: 'USD' },
+  buyerCountry: { type: String, default: 'US' },
+  exchangeRate: { type: Number, default: 1.0 },
+  displaySubtotal: Number,
+  displayShippingFee: Number,
+  displayTax: Number,
+  displayGrandTotal: Number,
+  paymentCurrency: { type: String, default: 'USD' },
+  paymentGateway: { type: String, default: 'stripe' },
+
+  // Refunds
+  refundAmount: Number,
+  refundCurrency: String,
+  refundExchangeRate: Number,
+  refundedAt: Date,
 
   // Payment
   paymentMethod: {
@@ -46,6 +65,7 @@ const orderSchema = new mongoose.Schema({
   razorpayOrderId: String,
   razorpayPaymentId: String,
   razorpaySignature: String,
+  stripePaymentIntentId: String,
   paidAt: Date,
 
   // Commission

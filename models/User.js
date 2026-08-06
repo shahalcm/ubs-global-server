@@ -22,6 +22,13 @@ const userSchema = new mongoose.Schema({
   isBlocked: { type: Boolean, default: false },
   fcmToken: String,
   language: { type: String, default: 'en' },
+  countryCode: { type: String, default: 'IN' },
+  countryName: { type: String, default: 'India' },
+  currencyCode: { type: String, default: 'INR' },
+  currencySymbol: { type: String, default: '₹' },
+  timezone: { type: String, default: 'Asia/Kolkata' },
+  lat: Number,
+  lng: Number,
   address: {
     street: String,
     city: String,

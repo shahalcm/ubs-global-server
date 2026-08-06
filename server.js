@@ -138,6 +138,13 @@ app.use((req, res, next) => {
   next()
 })
 
+// Currency Middleware & Routes
+const currencyMiddleware = require('./middleware/currencyMiddleware')
+const currencyService = require('./services/currencyService')
+app.use(currencyMiddleware)
+
+app.use('/api/currency', require('./routes/currency'))
+
 // Routes
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/users', require('./routes/users'))
@@ -165,9 +172,14 @@ app.use('/api/webhooks', require('./routes/webhooks'))
 require('./socket/socketHandler')(io)
 require('./socket/callSocket')(io)
 
-// Start background tracking cron job
+// Start background tracking cron job & currency exchange rate fetcher
 const trackingCronService = require('./services/trackingCronService')
 trackingCronService.start()
+
+currencyService.fetchLatestRates().catch(e => console.warn('Exchange rates initial fetch notice:', e.message))
+setInterval(() => {
+  currencyService.fetchLatestRates().catch(e => console.warn('Exchange rates 24h refresh notice:', e.message))
+}, 24 * 60 * 60 * 1000)
 
 // Error handler
 app.use((err, req, res, next) => {
