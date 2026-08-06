@@ -1,7 +1,7 @@
 const User = require('../models/User')
 const bcrypt = require('bcryptjs')
 const { generateUserToken, generateAdminToken } = require('../utils/generateToken')
-const { sendOTP, verifyOTP } = require('../utils/sendOTP')
+const { sendOTP, verifyOTP, normalizePhone } = require('../utils/sendOTP')
 
 // Send OTP
 exports.sendOTP = async (req, res) => {
@@ -47,7 +47,11 @@ exports.login = async (req, res) => {
     const { phone, email, password } = req.body
 
     let query = {}
-    if (phone) query.phone = phone.trim()
+    if (phone) {
+      const normPhone = normalizePhone(phone)
+      const rawPhone = phone.trim()
+      query.phone = { $in: [normPhone, rawPhone, phone, rawPhone.replace(/^\+91/, ''), rawPhone.replace(/^91/, '')] }
+    }
     else if (email) query.email = email.trim().toLowerCase()
     else {
       return res.status(400).json({ success: false, message: 'Phone number or email is required' })
@@ -102,7 +106,11 @@ exports.forgotPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Phone number is required' })
     }
 
-    const user = await User.findOne({ phone: phone.trim() })
+    const normPhone = normalizePhone(phone)
+    const rawPhone = phone.trim()
+    const user = await User.findOne({
+      phone: { $in: [normPhone, rawPhone, phone, rawPhone.replace(/^\+91/, ''), rawPhone.replace(/^91/, '')] }
+    })
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -140,13 +148,11 @@ exports.resetPasswordOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
     }
 
+    const normPhone = normalizePhone(phone)
+    const rawPhone = phone.trim()
     const user = await User.findOne({
-      $or: [
-        { phone: cleanPhone },
-        { phone: phone.trim() }
-      ]
-    }).select('+password')
-
+      phone: { $in: [normPhone, rawPhone, phone, rawPhone.replace(/^\+91/, ''), rawPhone.replace(/^91/, '')] }
+    })
     if (!user) {
       return res.status(404).json({ success: false, message: 'No registered user found with this phone number' })
     }
