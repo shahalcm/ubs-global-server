@@ -130,11 +130,12 @@ exports.resetPasswordOtp = async (req, res) => {
     }
 
     const cleanPhone = phone.trim().replace(/\s+/g, '')
+    const cleanOtp = (otp || '').trim()
     if (!cleanOtp) {
       return res.status(400).json({ success: false, message: 'OTP is required for password reset' })
     }
 
-    const isValid = await verifyOTP(cleanPhone, cleanOtp, true)
+    const isValid = await verifyOTP(cleanPhone, cleanOtp)
     if (!isValid) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
     }

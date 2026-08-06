@@ -18,7 +18,7 @@ exports.sendOTP = async (phone) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString()
   await OTP.deleteMany({ phone })
   await OTP.create({ phone, otp })
-  
+
   const twilioClient = getClient();
   if (twilioClient && phone !== '+917777777777') {
     try {
@@ -28,41 +28,52 @@ exports.sendOTP = async (phone) => {
         to: phone
       })
     } catch (twilioError) {
-      console.error('❌ Twilio send error, falling back to mock OTP:', twilioError.message);
-      console.log(`[MOCK OTP - Twilio Fail] Would have sent OTP ${otp} to ${phone}`);
+      console.error('❌ Twilio send error:', twilioError.message);
     }
-  } else {
-    console.log(`[MOCK OTP] Would have sent OTP ${otp} to ${phone}`);
   }
   return otp
 }
 
-exports.verifyOTP = async (phone, otp, allowRecentlyUsed = false) => {
+exports.verifyOTP = async (phone, otp) => {
   const cleanPhone = (phone || '').trim().replace(/\s+/g, '')
   const cleanOtp = (otp || '').trim()
 
-  // Allow a default bypass OTP in development environment, or for the test phone number in production
+  if (!cleanPhone || !cleanOtp) {
+    return false
+  }
+
   if (
-    (process.env.NODE_ENV === 'development' || cleanPhone === '+917777777777') &&
+    process.env.NODE_ENV === 'development' &&
+    cleanPhone === '+917777777777' &&
     cleanOtp === '123456'
   ) {
     return true
   }
 
-  const query = {
+  const record = await OTP.findOne({
     phone: { $in: [cleanPhone, phone] },
-    otp: cleanOtp,
-  }
-  if (!allowRecentlyUsed) {
-    query.isUsed = false
-    query.expiresAt = { $gt: new Date() }
+    isUsed: false,
+    expiresAt: { $gt: new Date() }
+  }).sort({ createdAt: -1 })
+
+  if (!record) {
+    return false
   }
 
-  const record = await OTP.findOne(query).sort({ createdAt: -1 })
-  if (!record) return false
-  if (!record.isUsed) {
-    record.isUsed = true
-    await record.save()
+  if (record.attempts && record.attempts >= 5) {
+    console.warn(`⚠️ OTP attempt limit reached for phone: ${cleanPhone}`)
+    await OTP.deleteOne({ _id: record._id }).catch(() => null)
+    return false
   }
+
+  if (record.otp !== cleanOtp) {
+    record.attempts = (record.attempts || 0) + 1
+    await record.save().catch(() => null)
+    return false
+  }
+
+  record.isUsed = true
+  await record.save().catch(() => null)
+  await OTP.deleteOne({ _id: record._id }).catch(() => null)
   return true
 }

@@ -448,6 +448,22 @@ exports.trackOrder = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' })
     }
 
+    // Ownership & Access Control Check
+    const userIdStr = req.user._id.toString()
+    const isBuyer = order.buyerId && order.buyerId._id.toString() === userIdStr
+    let isSellerUser = false
+    if (order.sellerId) {
+      const sellerDoc = await Seller.findById(order.sellerId._id || order.sellerId)
+      if (sellerDoc && sellerDoc.userId && sellerDoc.userId.toString() === userIdStr) {
+        isSellerUser = true
+      }
+    }
+    const isAdmin = req.user.role === 'admin'
+
+    if (!isBuyer && !isSellerUser && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Not authorized to view tracking for this order' })
+    }
+
     // Immediately respond to client with order & cached tracking events
     res.json({ success: true, order })
 
@@ -524,6 +540,21 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' })
     }
 
+    // Authorization check: Only assigned seller or admin can update order status
+    const userIdStr = req.user._id.toString()
+    let isSellerUser = false
+    if (order.sellerId) {
+      const sellerDoc = await Seller.findById(order.sellerId)
+      if (sellerDoc && sellerDoc.userId && sellerDoc.userId.toString() === userIdStr) {
+        isSellerUser = true
+      }
+    }
+    const isAdmin = req.user.role === 'admin'
+
+    if (!isSellerUser && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Only the assigned seller or admin can update order status' })
+    }
+
     order.orderStatus = status
     if (trackingNumber) order.trackingNumber = trackingNumber
     if (courierName) order.courierName = courierName
@@ -560,6 +591,22 @@ exports.cancelOrder = async (req, res) => {
     const order = await Order.findById(id)
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' })
+    }
+
+    // Authorization check: Buyer, Seller, or Admin can cancel order
+    const userIdStr = req.user._id.toString()
+    const isBuyer = order.buyerId && order.buyerId.toString() === userIdStr
+    let isSellerUser = false
+    if (order.sellerId) {
+      const sellerDoc = await Seller.findById(order.sellerId)
+      if (sellerDoc && sellerDoc.userId && sellerDoc.userId.toString() === userIdStr) {
+        isSellerUser = true
+      }
+    }
+    const isAdmin = req.user.role === 'admin'
+
+    if (!isBuyer && !isSellerUser && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Not authorized to cancel this order' })
     }
 
     // Cancel on Shiprocket if order ID exists
@@ -606,6 +653,20 @@ exports.assignAWB = async (req, res) => {
     const order = await Order.findById(id)
     if (!order || !order.shiprocketShipmentId) {
       return res.status(400).json({ success: false, message: 'Order or Shiprocket shipment ID not found' })
+    }
+
+    const userIdStr = req.user._id.toString()
+    let isSellerUser = false
+    if (order.sellerId) {
+      const sellerDoc = await Seller.findById(order.sellerId)
+      if (sellerDoc && sellerDoc.userId && sellerDoc.userId.toString() === userIdStr) {
+        isSellerUser = true
+      }
+    }
+    const isAdmin = req.user.role === 'admin'
+
+    if (!isSellerUser && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Only the seller or admin can execute shipping actions' })
     }
 
     const awbRes = await shiprocketService.assignAWB({ shipment_id: order.shiprocketShipmentId })

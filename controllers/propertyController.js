@@ -167,20 +167,22 @@ exports.createPropertyOrder = async (req, res) => {
   try {
     const amountInCents = 52
 
-    let razorpayOrder
-    if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'rzp_test_your_key_id') {
-      razorpayOrder = { id: `order_mock_${Date.now()}` }
-    } else {
-      razorpayOrder = await razorpay.orders.create({
-        amount: amountInCents,
-        currency: 'USD',
-        receipt: `property_fee_${Date.now()}`,
-        notes: {
-          userId: req.user._id.toString(),
-          type: 'property_platform_fee'
-        }
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({
+        success: false,
+        message: 'Payment gateway credentials missing'
       })
     }
+
+    const razorpayOrder = await razorpay.orders.create({
+      amount: amountInCents,
+      currency: 'USD',
+      receipt: `property_fee_${Date.now()}`,
+      notes: {
+        userId: req.user._id.toString(),
+        type: 'property_platform_fee'
+      }
+    })
 
     res.json({
       success: true,
@@ -214,22 +216,31 @@ exports.verifyPropertyFee = async (req, res) => {
       images
     } = req.body
 
-    // Verify signature
-    if (razorpayOrderId && razorpayOrderId.startsWith('order_mock_')) {
-      // Bypass signature verification for mock/development orders
-    } else {
-      const body = razorpayOrderId + '|' + razorpayPaymentId
-      const expectedSignature = crypto
-        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || 'your_razorpay_secret')
-        .update(body.toString())
-        .digest('hex')
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      return res.status(400).json({
+        success: false,
+        message: 'razorpayOrderId, razorpayPaymentId, and razorpaySignature are required'
+      })
+    }
 
-      if (expectedSignature !== razorpaySignature) {
-        return res.status(400).json({
-          success: false,
-          message: 'Payment verification failed'
-        })
-      }
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({
+        success: false,
+        message: 'Payment gateway configuration missing'
+      })
+    }
+
+    const body = razorpayOrderId + '|' + razorpayPaymentId
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest('hex')
+
+    if (expectedSignature !== razorpaySignature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed'
+      })
     }
 
     const user = await User.findById(req.user._id)
