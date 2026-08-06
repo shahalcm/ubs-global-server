@@ -82,8 +82,10 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: [
       'placed', 'confirmed', 'packed',
-      'shipped', 'delivered',
-      'cancelled', 'returned'
+      'pickup_scheduled', 'picked_up',
+      'shipped', 'in_transit', 'reached_origin_hub', 'reached_destination_hub',
+      'out_for_delivery', 'delivered',
+      'returned', 'cancelled', 'failed_delivery', 'lost', 'damaged'
     ],
     default: 'placed'
   },
@@ -119,6 +121,7 @@ const orderSchema = new mongoose.Schema({
   pickupStatus: { type: String, default: 'pending' },
   pickupScheduledDate: Date,
   pickupId: String,
+  pickupTokenNumber: String,
   manifestUrl: String,
   labelUrl: String,
   invoiceUrl: String,
@@ -157,6 +160,9 @@ orderSchema.pre('save', async function(next) {
 orderSchema.index({ buyerId: 1 })
 orderSchema.index({ sellerId: 1 })
 orderSchema.index({ orderStatus: 1 })
+orderSchema.index({ shiprocketOrderId: 1 })
+orderSchema.index({ shiprocketShipmentId: 1 })
+orderSchema.index({ awbCode: 1 })
 orderSchema.index({ createdAt: -1 })
 
 module.exports = mongoose.model('Order', orderSchema)

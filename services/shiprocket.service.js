@@ -182,6 +182,10 @@ class ShiprocketService {
    * Assign AWB (Air Waybill) to Shipment
    */
   async assignAWB({ shipment_id, courier_id }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log(`🏷️ [Shiprocket] Assigning AWB for shipment_id: ${shipment_id}, courier_id: ${courier_id || 'auto'}`)
       const payload = { shipment_id }
@@ -191,7 +195,7 @@ class ShiprocketService {
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Assign AWB Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to assign AWB')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -199,6 +203,10 @@ class ShiprocketService {
    * Generate Pickup Request
    */
   async generatePickup({ shipment_id }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log(`🚚 [Shiprocket] Generating pickup for shipment_id: ${shipment_id}`)
       const response = await this.client.post('/courier/generate/pickup', {
@@ -207,7 +215,7 @@ class ShiprocketService {
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Generate Pickup Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to generate pickup request')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -215,6 +223,10 @@ class ShiprocketService {
    * Generate Manifest
    */
   async generateManifest({ shipment_id }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log(`📋 [Shiprocket] Generating manifest for shipment_id: ${shipment_id}`)
       const response = await this.client.post('/manifests/generate', {
@@ -223,7 +235,7 @@ class ShiprocketService {
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Generate Manifest Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to generate manifest')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -231,6 +243,10 @@ class ShiprocketService {
    * Print Manifest
    */
   async printManifest({ order_ids }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log('🖨️ [Shiprocket] Printing manifest for order_ids:', order_ids)
       const response = await this.client.post('/manifests/print', {
@@ -239,7 +255,7 @@ class ShiprocketService {
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Print Manifest Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to print manifest')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -247,6 +263,10 @@ class ShiprocketService {
    * Generate Shipping Label
    */
   async generateLabel({ shipment_id }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log(`🏷️ [Shiprocket] Generating label for shipment_id: ${shipment_id}`)
       const response = await this.client.post('/courier/generate/label', {
@@ -255,7 +275,7 @@ class ShiprocketService {
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Generate Label Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to generate shipping label')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -263,6 +283,10 @@ class ShiprocketService {
    * Print / Generate Invoice
    */
   async printInvoice({ ids }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log('🧾 [Shiprocket] Printing invoice for ids:', ids)
       const response = await this.client.post('/orders/print/invoice', {
@@ -271,7 +295,7 @@ class ShiprocketService {
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Print Invoice Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to print invoice')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -302,13 +326,17 @@ class ShiprocketService {
    * Track Shipment by AWB Code
    */
   async trackShipment(awbCode) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log(`📍 [Shiprocket] Tracking shipment AWB: ${awbCode}`)
       const response = await this.client.get(`/courier/track/awb/${awbCode}`)
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Track Shipment Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to track shipment')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -316,6 +344,10 @@ class ShiprocketService {
    * Cancel Shipment
    */
   async cancelShipment({ ids }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log('🚫 [Shiprocket] Cancelling shipment ids:', ids)
       const response = await this.client.post('/orders/cancel', {
@@ -324,7 +356,7 @@ class ShiprocketService {
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Cancel Order Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to cancel shipment on Shiprocket')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 
@@ -332,13 +364,17 @@ class ShiprocketService {
    * Register / Sync Seller Pickup Address with Shiprocket
    */
   async addPickupAddress(pickupData) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket credentials not configured' }
+    }
     try {
       console.log('🏢 [Shiprocket] Adding vendor pickup location:', pickupData.pickup_location)
       const response = await this.client.post('/settings/company/addpickup', pickupData)
       return response.data
     } catch (error) {
       console.error('❌ [Shiprocket Add Pickup Address Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to add pickup address to Shiprocket')
+      return { success: false, message: error.response?.data?.message || error.message }
     }
   }
 }
