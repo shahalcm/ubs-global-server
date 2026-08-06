@@ -159,10 +159,15 @@ app.use('/api/job-applications', require('./routes/jobApplications'))
 app.use('/api/properties', require('./routes/properties'))
 app.use('/api/bot-config', require('./routes/botConfig'))
 app.use('/api/calls', require('./routes/callRoutes'))
+app.use('/api/webhooks', require('./routes/webhooks'))
 
 // Socket handler
 require('./socket/socketHandler')(io)
 require('./socket/callSocket')(io)
+
+// Start background tracking cron job
+const trackingCronService = require('./services/trackingCronService')
+trackingCronService.start()
 
 // Error handler
 app.use((err, req, res, next) => {

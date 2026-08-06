@@ -77,6 +77,9 @@ router.patch('/gdpr-requests/:id', adminProtect, adminController.updateGDPRReque
 // Job Applications
 router.get('/job-applications', adminProtect, adminController.getJobApplications)
 router.get('/job-applications/:id/download-cv', adminProtect, adminController.downloadJobApplicationCV)
-router.delete('/job-applications/:id', adminProtect, adminController.deleteJobApplication)
+// Shipping Management & KYC
+router.get('/shipments', adminProtect, adminController.getAllShipments)
+router.patch('/sellers/:sellerId/verify-kyc', adminProtect, adminController.verifySellerKYC)
+router.post('/shipments/:orderId/sync-tracking', adminProtect, adminController.syncShipmentTracking)
 
 module.exports = router

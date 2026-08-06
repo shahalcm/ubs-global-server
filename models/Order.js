@@ -87,22 +87,41 @@ const orderSchema = new mongoose.Schema({
     default: 'standard'
   },
 
-  // Tracking
+  // Tracking & Shiprocket External API Integration
   trackingNumber: String,
   courierName: String,
-  estimatedDelivery: Date,
-  deliveredAt: Date,
+  courierCompanyId: Number,
+  shiprocketOrderId: String,
+  shiprocketShipmentId: String,
+  awbCode: String,
+  trackingUrl: String,
+  shippingCharge: { type: Number, default: 0 },
+  pickupStatus: { type: String, default: 'pending' },
+  pickupScheduledDate: Date,
+  pickupId: String,
+  manifestUrl: String,
+  labelUrl: String,
+  invoiceUrl: String,
+  expectedDeliveryDate: Date,
+  deliveryDate: Date,
+  currentShipmentStatus: { type: String, default: 'NEW' },
+  currentTrackingStatus: { type: String, default: 'Order Created' },
+  trackingEvents: [{
+    activity: String,
+    location: String,
+    date: String,
+    time: String,
+    status: String,
+    sr_status: String,
+    timestamp: { type: Date, default: Date.now }
+  }],
 
   // Timeline
   timeline: [{
     status: String,
-    timestamp: Date,
+    timestamp: { type: Date, default: Date.now },
     note: String
   }],
-
-  // Bill/Invoice
-  invoiceUrl: String,
-
 }, { timestamps: true })
 
 // Auto generate order number

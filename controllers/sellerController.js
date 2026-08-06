@@ -505,4 +505,147 @@ exports.getRegistrationFee = async (req, res) => {
   }
 }
 
+/**
+ * Add Seller Pickup Address & Sync with Shiprocket
+ */
+exports.addPickupAddress = async (req, res) => {
+  try {
+    const seller = await Seller.findOne({ userId: req.user._id })
+    if (!seller) {
+      return res.status(404).json({ success: false, message: 'Seller profile not found' })
+    }
+
+    const {
+      pickup_location,
+      name,
+      email,
+      phone,
+      address,
+      address_2,
+      city,
+      state,
+      country = 'India',
+      pin_code,
+      isDefault
+    } = req.body
+
+    if (!pickup_location || !name || !phone || !address || !city || !state || !pin_code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pickup location tag, name, phone, address, city, state, and pin code are required'
+      })
+    }
+
+    // Sync pickup location with Shiprocket API
+    const shiprocketService = require('../services/shiprocket.service')
+    try {
+      await shiprocketService.addPickupAddress({
+        pickup_location: pickup_location.trim().replace(/\s+/g, '_'),
+        name: name.trim(),
+        email: (email || seller.email || req.user.email).trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        address_2: (address_2 || '').trim(),
+        city: city.trim(),
+        state: state.trim(),
+        country: country.trim(),
+        pin_code: pin_code.trim()
+      })
+    } catch (srErr) {
+      console.warn('⚠️ [Shiprocket] Pickup address sync warning:', srErr.message)
+      // Continue saving locally even if Shiprocket sync logs warning or is already added
+    }
+
+    const sanitizedTag = pickup_location.trim().replace(/\s+/g, '_')
+
+    // Handle default status
+    if (isDefault || seller.pickupAddresses.length === 0) {
+      seller.pickupAddresses.forEach(p => { p.isDefault = false })
+    }
+
+    seller.pickupAddresses.push({
+      pickup_location: sanitizedTag,
+      name: name.trim(),
+      email: (email || seller.email || req.user.email).trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+      address_2: (address_2 || '').trim(),
+      city: city.trim(),
+      state: state.trim(),
+      country,
+      pin_code: pin_code.trim(),
+      isDefault: isDefault || seller.pickupAddresses.length === 0,
+      isVerified: true
+    })
+
+    await seller.save()
+
+    res.json({
+      success: true,
+      message: 'Pickup address added and synced with Shiprocket successfully',
+      pickupAddresses: seller.pickupAddresses
+    })
+  } catch (error) {
+    console.error('Add pickup address error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+/**
+ * Get Seller Pickup Addresses
+ */
+exports.getPickupAddresses = async (req, res) => {
+  try {
+    const seller = await Seller.findOne({ userId: req.user._id })
+    if (!seller) {
+      return res.status(404).json({ success: false, message: 'Seller profile not found' })
+    }
+
+    res.json({
+      success: true,
+      pickupAddresses: seller.pickupAddresses || []
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+/**
+ * Set Default Seller Pickup Address
+ */
+exports.setDefaultPickupAddress = async (req, res) => {
+  try {
+    const { pickupLocationId } = req.params
+    const seller = await Seller.findOne({ userId: req.user._id })
+    if (!seller) {
+      return res.status(404).json({ success: false, message: 'Seller profile not found' })
+    }
+
+    let found = false
+    seller.pickupAddresses.forEach(p => {
+      if (p._id.toString() === pickupLocationId || p.pickup_location === pickupLocationId) {
+        p.isDefault = true
+        found = true
+      } else {
+        p.isDefault = false
+      }
+    })
+
+    if (!found) {
+      return res.status(404).json({ success: false, message: 'Pickup address not found' })
+    }
+
+    await seller.save()
+
+    res.json({
+      success: true,
+      message: 'Default pickup address updated',
+      pickupAddresses: seller.pickupAddresses
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+
 

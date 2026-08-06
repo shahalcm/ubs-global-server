@@ -25,7 +25,60 @@ const sellerSchema = new mongoose.Schema({
   },
   shopLogo: String,
   idProof: String,
+  businessName: String,
   gstNumber: String,
+  panNumber: String,
+  kycStatus: {
+    type: String,
+    enum: ['pending', 'verified', 'rejected', 'unsubmitted'],
+    default: 'unsubmitted'
+  },
+  kycDocuments: {
+    panCard: String,
+    gstCertificate: String,
+    addressProof: String
+  },
+  warehouseAddress: {
+    address: String,
+    address_2: String,
+    city: String,
+    state: String,
+    country: { type: String, default: 'India' },
+    pin_code: String,
+    phone: String,
+    email: String
+  },
+  pickupAddresses: [{
+    pickup_location: { type: String, required: true }, // Shiprocket unique identifier tag
+    name: String,
+    email: String,
+    phone: String,
+    address: String,
+    address_2: String,
+    city: String,
+    state: String,
+    country: { type: String, default: 'India' },
+    pin_code: String,
+    isDefault: { type: Boolean, default: false },
+    isVerified: { type: Boolean, default: false }
+  }],
+  returnAddress: {
+    address: String,
+    address_2: String,
+    city: String,
+    state: String,
+    country: { type: String, default: 'India' },
+    pin_code: String,
+    phone: String,
+    email: String
+  },
+  primaryPhone: String,
+  businessEmail: String,
+  businessVerificationStatus: {
+    type: String,
+    enum: ['unverified', 'pending', 'verified', 'rejected'],
+    default: 'unverified'
+  },
   website: String,
   categories: String,
   yearEstablished: String,
@@ -51,7 +104,8 @@ const sellerSchema = new mongoose.Schema({
     accountNumber: String,
     bankName: String,
     ifscCode: String,
-    upiId: String
+    upiId: String,
+    accountHolderName: String
   },
   fcmToken: String,
   memberSince: { type: Date, default: Date.now },

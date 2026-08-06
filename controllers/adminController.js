@@ -1492,6 +1492,135 @@ exports.downloadJobApplicationCV = async (req, res) => {
   }
 }
 
+/**
+ * Admin: Get All Shipments with Filters & Analytics
+ */
+exports.getAllShipments = async (req, res) => {
+  try {
+    const { sellerId, courier, orderNumber, awbCode, status, startDate, endDate, page = 1, limit = 20 } = req.query
+    const query = {}
+
+    if (sellerId) query.sellerId = sellerId
+    if (courier) query.courierName = new RegExp(courier, 'i')
+    if (orderNumber) query.orderNumber = new RegExp(orderNumber, 'i')
+    if (awbCode) query.awbCode = new RegExp(awbCode, 'i')
+    if (status && status !== 'All') query.orderStatus = status.toLowerCase()
+    
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = new Date(startDate)
+      if (endDate) query.createdAt.$lte = new Date(endDate)
+    }
+
+    const total = await Order.countDocuments(query)
+    const shipments = await Order.find(query)
+      .populate('sellerId', 'shopName ownerName email phone')
+      .populate('buyerId', 'name email phone')
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+
+    // Calculate aggregated analytics
+    const analytics = await Order.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalShippingCost: { $sum: '$shippingFee' },
+          totalRevenue: { $sum: '$grandTotal' },
+          count: { $sum: 1 }
+        }
+      }
+    ])
+
+    res.json({
+      success: true,
+      shipments,
+      analytics: analytics[0] || { totalShippingCost: 0, totalRevenue: 0, count: 0 },
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+/**
+ * Admin: Verify Seller KYC & Business Verification
+ */
+exports.verifySellerKYC = async (req, res) => {
+  try {
+    const { sellerId } = req.params
+    const { kycStatus, businessVerificationStatus, adminNote } = req.body
+
+    const seller = await Seller.findById(sellerId)
+    if (!seller) {
+      return res.status(404).json({ success: false, message: 'Seller not found' })
+    }
+
+    if (kycStatus) seller.kycStatus = kycStatus
+    if (businessVerificationStatus) seller.businessVerificationStatus = businessVerificationStatus
+    if (adminNote) seller.adminNote = adminNote
+
+    if (kycStatus === 'verified' && businessVerificationStatus === 'verified') {
+      seller.isVerified = true
+    }
+
+    await seller.save()
+
+    res.json({
+      success: true,
+      message: 'Seller KYC & business verification status updated',
+      seller
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+/**
+ * Admin: Sync Shipment Tracking manually
+ */
+exports.syncShipmentTracking = async (req, res) => {
+  try {
+    const { orderId } = req.params
+    const order = await Order.findById(orderId)
+    if (!order || !order.awbCode) {
+      return res.status(400).json({ success: false, message: 'Order or AWB Code not found' })
+    }
+
+    const shiprocketService = require('../services/shiprocket.service')
+    const trackingData = await shiprocketService.trackShipment(order.awbCode)
+
+    if (trackingData?.tracking_data?.shipment_track_activities) {
+      order.trackingEvents = trackingData.tracking_data.shipment_track_activities.map(act => ({
+        activity: act.activity || act.sr_status_label,
+        location: act.location || '',
+        date: act.date || '',
+        time: act.time || '',
+        status: act.sr_status_label || act.activity,
+        sr_status: act.sr_status || '',
+        timestamp: new Date()
+      }))
+      await order.save()
+    }
+
+    res.json({
+      success: true,
+      message: 'Tracking data synchronized with Shiprocket',
+      trackingData,
+      order
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+
 
 
 
