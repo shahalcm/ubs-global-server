@@ -119,7 +119,7 @@ exports.createRazorpayOrder = async (req, res) => {
     const sellerEarnings = subtotal
     const adminEarnings = commissionAmount
 
-    const currency = (req.body.currency || 'USD').toUpperCase()
+    const currency = (req.body.currency || 'INR').toUpperCase()
 
     // Convert to paise/cents (Razorpay uses smallest currency unit)
     const amountInSmallestUnit = Math.round(grandTotal * 100)
@@ -148,7 +148,7 @@ exports.createRazorpayOrder = async (req, res) => {
 
     // Create Razorpay order
     let razorpayOrder
-    if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'rzp_test_your_key_id') {
+    if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'rzp_test_your_key_id' || process.env.RAZORPAY_KEY_ID === 'rzp_test_placeholder') {
       razorpayOrder = { id: `order_mock_${Date.now()}` }
     } else {
       try {
@@ -176,7 +176,7 @@ exports.createRazorpayOrder = async (req, res) => {
       shippingFee: Number(shippingFee.toFixed(2)),
       tax: Number(tax.toFixed(2)),
       grandTotal: Number(grandTotal.toFixed(2)),
-      paymentMethod: currency === 'INR' ? 'razorpay' : 'stripe',
+      paymentMethod: 'razorpay',
       paymentStatus: 'pending',
       razorpayOrderId: razorpayOrder.id,
       commissionPercent,
