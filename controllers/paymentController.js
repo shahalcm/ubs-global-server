@@ -119,10 +119,20 @@ exports.createRazorpayOrder = async (req, res) => {
     const sellerEarnings = subtotal
     const adminEarnings = commissionAmount
 
-    const currency = 'INR'
+    const currency = (req.body.currency || 'USD').toUpperCase()
+    const reqAmount = Number(req.body.amount)
+    const finalGrandTotal = reqAmount && !isNaN(reqAmount) && reqAmount > 0 ? reqAmount : grandTotal
 
-    // Convert to paise (Razorpay uses smallest currency unit)
-    const amountInSmallestUnit = Math.round(grandTotal * 100)
+    // Convert to smallest currency unit (cents/paise)
+    const amountInSmallestUnit = Math.round(finalGrandTotal * 100)
+
+    console.log('💳 [Backend Razorpay Order Debug]:', {
+      selectedCountry: formattedDeliveryAddress?.country || 'Not specified',
+      selectedCurrency: currency,
+      amountSentToBackend: finalGrandTotal.toFixed(2),
+      razorpayOrderAmount: amountInSmallestUnit,
+      razorpayOrderCurrency: currency
+    })
 
     let targetSellerId = sellerId
     if (!targetSellerId || targetSellerId === 'unknown' || !mongoose.Types.ObjectId.isValid(targetSellerId)) {
@@ -154,7 +164,7 @@ exports.createRazorpayOrder = async (req, res) => {
       try {
         razorpayOrder = await razorpay.orders.create({
           amount: amountInSmallestUnit,
-          currency: 'INR',
+          currency: currency,
           receipt: `receipt_${Date.now()}`,
           notes: {
             buyerId: req.user._id.toString(),
@@ -175,9 +185,9 @@ exports.createRazorpayOrder = async (req, res) => {
       subtotal: Number(subtotal.toFixed(2)),
       shippingFee: Number(shippingFee.toFixed(2)),
       tax: Number(tax.toFixed(2)),
-      grandTotal: Number(grandTotal.toFixed(2)),
+      grandTotal: Number(finalGrandTotal.toFixed(2)),
       paymentMethod: 'razorpay',
-      paymentCurrency: 'INR',
+      paymentCurrency: currency,
       paymentStatus: 'pending',
       razorpayOrderId: razorpayOrder.id,
       commissionPercent,
