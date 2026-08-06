@@ -44,11 +44,14 @@ exports.signup = async (req, res) => {
 // Login (supports both password and phone lookup)
 exports.login = async (req, res) => {
   try {
-    const { phone, email, password } = req.body
+    const { phone, email, password, otp } = req.body
 
     let query = {}
-    if (phone) query.phone = phone.trim()
-    else if (email) query.email = email.trim().toLowerCase()
+    const cleanPhone = phone ? phone.trim().replace(/\s+/g, '') : null
+    const cleanEmail = email ? email.trim().toLowerCase() : null
+
+    if (cleanPhone) query.phone = { $in: [cleanPhone, phone.trim()] }
+    else if (cleanEmail) query.email = cleanEmail
     else {
       return res.status(400).json({ success: false, message: 'Phone number or email is required' })
     }
@@ -61,24 +64,48 @@ exports.login = async (req, res) => {
       })
     }
 
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password is required'
+    // 1. Password Login Flow
+    if (password) {
+      if (!user.password) {
+        return res.status(400).json({
+          success: false,
+          message: 'No password set for this account. Please login using OTP.'
+        })
+      }
+      const isMatch = await bcrypt.compare(password, user.password)
+      if (!isMatch) {
+        return res.status(400).json({
+          success: false,
+          message: 'Incorrect password. Please try again or click Forgot Password.'
+        })
+      }
+    } 
+    // 2. Direct OTP Payload Flow
+    else if (otp) {
+      const isValid = await verifyOTP(cleanPhone || user.phone, otp)
+      if (!isValid) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
+      }
+    } 
+    // 3. Post-OTP Verification Session Flow (Phone verified within last 5 minutes)
+    else if (cleanPhone) {
+      const OTP = require('../models/OTP')
+      const recentOtpRecord = await OTP.findOne({
+        phone: { $in: [cleanPhone, phone.trim()] },
+        isUsed: true,
+        updatedAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) }
       })
-    }
-
-    if (!user.password) {
+      if (!recentOtpRecord) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password or valid OTP verification is required to log in.'
+        })
+      }
+    } 
+    else {
       return res.status(400).json({
         success: false,
-        message: 'No password set for this account. Please login using OTP.'
-      })
-    }
-    const isMatch = await bcrypt.compare(password, user.password)
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: 'Incorrect password. Please try again or click Forgot Password.'
+        message: 'Password or OTP is required to log in.'
       })
     }
 
