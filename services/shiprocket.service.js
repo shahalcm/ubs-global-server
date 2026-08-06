@@ -25,7 +25,9 @@ class ShiprocketService {
       // Exclude login endpoint from token attachment
       if (!config.url.includes('/auth/login')) {
         const token = await this.getToken()
-        config.headers.Authorization = `Bearer ${token}`
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
       }
       return config
     }, (error) => Promise.reject(error))
@@ -86,7 +88,7 @@ class ShiprocketService {
     const email = process.env.SHIPROCKET_API_EMAIL
     const password = process.env.SHIPROCKET_API_PASSWORD
 
-    if (!email || !password || email === 'your_shiprocket_email@example.com') {
+    if (!email || !password || email.includes('example.com')) {
       console.warn('ℹ️ [Shiprocket] API credentials (SHIPROCKET_API_EMAIL / SHIPROCKET_API_PASSWORD) not configured.')
       return null
     }
@@ -117,19 +119,12 @@ class ShiprocketService {
   }
 
   /**
-   * Get cached or fresh authentication token
-   */
-  async getToken() {
-    if (!process.env.SHIPROCKET_API_EMAIL || !process.env.SHIPROCKET_API_PASSWORD) {
-      return null
-    }
-    return this.authenticate()
-  }
-
-  /**
    * Returns valid JWT Bearer Token
    */
   async getToken() {
+    if (!process.env.SHIPROCKET_API_EMAIL || !process.env.SHIPROCKET_API_PASSWORD || process.env.SHIPROCKET_API_EMAIL.includes('example.com')) {
+      return null
+    }
     if (!this.token || !this.tokenExpiresAt || Date.now() >= this.tokenExpiresAt) {
       await this.authenticate()
     }
@@ -140,6 +135,10 @@ class ShiprocketService {
    * Check Courier Serviceability & Calculate Shipping Fees
    */
   async checkServiceability({ pickup_postcode, delivery_postcode, weight, cod = 0, length, width, height }) {
+    const token = await this.getToken()
+    if (!token) {
+      return { success: false, message: 'Shiprocket API credentials not configured' }
+    }
     try {
       const params = {
         pickup_postcode,
@@ -164,6 +163,11 @@ class ShiprocketService {
    * Create Adhoc Order in Shiprocket
    */
   async createOrder(orderData) {
+    const token = await this.getToken()
+    if (!token) {
+      console.warn('ℹ️ [Shiprocket] API credentials not configured. Skipping remote order creation.')
+      return { success: false, message: 'Shiprocket API credentials not configured in environment' }
+    }
     try {
       console.log('📝 [Shiprocket] Creating order adhoc for order:', orderData.order_id)
       const response = await this.client.post('/orders/create/adhoc', orderData)
