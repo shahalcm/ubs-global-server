@@ -7,6 +7,8 @@ const {
   createRazorpayOrder,
   verifyPayment,
   getPaymentHistory,
+  renderRazorpayCheckoutHtml,
+  renderRazorpayCallback,
   sellerWithdrawal,
   adminWithdrawal,
   getSellerEarnings,
@@ -18,6 +20,8 @@ const {
 router.post('/create-order', protect, createRazorpayOrder)
 router.post('/verify', protect, verifyPayment)
 router.get('/history', protect, getPaymentHistory)
+router.get('/razorpay-checkout/:orderId', renderRazorpayCheckoutHtml)
+router.get('/razorpay-callback', renderRazorpayCallback)
 
 // Seller
 router.get(

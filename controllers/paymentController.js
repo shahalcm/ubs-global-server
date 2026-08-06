@@ -529,6 +529,126 @@ exports.verifyPayment = async (req, res) => {
   }
 }
 
+// Hosted Web Checkout for Expo Go / Browser fallback
+exports.renderRazorpayCheckoutHtml = async (req, res) => {
+  try {
+    const { orderId } = req.params
+    const order = await Order.findById(orderId).populate('buyerId')
+    if (!order) {
+      return res.status(404).send('<h2>Order Not Found</h2>')
+    }
+
+    const key = process.env.RAZORPAY_KEY_ID || 'rzp_live_T9JpjDwwO1lbZH'
+    const grandTotalINR = order.paymentCurrency === 'INR' ? order.grandTotal : order.grandTotal * 87.0
+    const amountInPaise = Math.round(grandTotalINR * 100)
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>UBS Global Razorpay Checkout</title>
+        <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+        <style>
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #1a237e; color: #fff; padding: 20px; box-sizing: border-box; }
+          .card { text-align: center; background: #ffffff; color: #1a237e; padding: 30px; border-radius: 20px; max-width: 400px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+          .title { font-size: 20px; font-weight: bold; margin-bottom: 8px; color: #1a237e; }
+          .subtitle { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+          .amount { font-size: 32px; font-weight: 800; color: #1a237e; margin-bottom: 20px; }
+          .btn { background: #1a237e; color: #ffffff; border: none; padding: 14px 28px; border-radius: 12px; font-weight: bold; font-size: 16px; cursor: pointer; width: 100%; box-shadow: 0 4px 12px rgba(26,35,126,0.3); }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="title">UBS Global Secure Payment</div>
+          <div class="subtitle">Order #${order.orderNumber}</div>
+          <div class="amount">₹${(amountInPaise / 100).toFixed(2)}</div>
+          <button class="btn" id="payBtn" onclick="openRazorpay()">Pay Now with Razorpay</button>
+        </div>
+        <script>
+          function openRazorpay() {
+            var options = {
+              "key": "${key}",
+              "amount": "${amountInPaise}",
+              "currency": "INR",
+              "name": "UBS Global Marketplace",
+              "description": "Order #${order.orderNumber}",
+              "order_id": "${order.razorpayOrderId}",
+              "prefill": {
+                "name": "${order.deliveryAddress?.fullName || order.buyerId?.name || ''}",
+                "email": "${order.deliveryAddress?.email || order.buyerId?.email || ''}",
+                "contact": "${order.deliveryAddress?.phone || order.buyerId?.phone || ''}"
+              },
+              "theme": { "color": "#1a237e" },
+              "handler": function (response) {
+                window.location.href = "/api/payments/razorpay-callback?orderId=${order._id}&razorpay_payment_id=" + response.razorpay_payment_id + "&razorpay_order_id=" + response.razorpay_order_id + "&razorpay_signature=" + response.razorpay_signature;
+              },
+              "modal": {
+                "ondismiss": function() {
+                  console.log('Checkout modal closed');
+                }
+              }
+            };
+            var rzp = new Razorpay(options);
+            rzp.open();
+          }
+          window.onload = function() {
+            openRazorpay();
+          };
+        </script>
+      </body>
+      </html>
+    `
+    res.setHeader('Content-Type', 'text/html')
+    res.send(html)
+  } catch (err) {
+    res.status(500).send('<h2>Payment Initialization Error</h2>')
+  }
+}
+
+// Hosted Web Callback after Razorpay Success
+exports.renderRazorpayCallback = async (req, res) => {
+  try {
+    const { orderId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.query
+    const order = await Order.findByIdAndUpdate(orderId, {
+      paymentStatus: 'paid',
+      orderStatus: 'placed',
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+      paidAt: new Date()
+    })
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Payment Successful</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; text-align: center; padding: 40px 20px; background: #e8f5e9; color: #2e7d32; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; box-sizing: border-box; }
+          .card { background: #ffffff; padding: 36px 24px; border-radius: 24px; max-width: 400px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
+          .icon { font-size: 56px; margin-bottom: 12px; }
+          .title { font-size: 22px; font-weight: bold; color: #1b5e20; margin-bottom: 8px; }
+          .sub { font-size: 14px; color: #475569; margin-bottom: 24px; }
+          .btn { display: block; width: 100%; background: #1a237e; color: #ffffff; padding: 14px 0; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 15px; box-sizing: border-box; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">✅</div>
+          <div class="title">Payment Successful!</div>
+          <div class="sub">Order #${order?.orderNumber || ''} has been placed successfully.</div>
+          <a href="ubsglobal://order-tracking?orderId=${orderId}" class="btn">Return to App</a>
+        </div>
+      </body>
+      </html>
+    `
+    res.setHeader('Content-Type', 'text/html')
+    res.send(html)
+  } catch (err) {
+    res.status(500).send('<h2>Payment Processing Error</h2>')
+  }
+}
+
 // Seller: Get earnings breakdown
 exports.getSellerEarnings = async (req, res) => {
   try {
