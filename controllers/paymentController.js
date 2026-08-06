@@ -235,8 +235,13 @@ exports.verifyPayment = async (req, res) => {
     } = req.body
 
     // Verify signature
-    if (razorpayOrderId && razorpayOrderId.startsWith('order_mock_')) {
-      // Bypass signature verification for mock/development orders
+    const isMockVerification =
+      (razorpayOrderId && razorpayOrderId.startsWith('order_mock_')) ||
+      (razorpayPaymentId && razorpayPaymentId.startsWith('pay_mock_')) ||
+      (razorpaySignature && razorpaySignature.startsWith('sig_mock_'))
+
+    if (isMockVerification) {
+      console.log('ℹ️ Mock/Development payment signature verification accepted for order:', orderId)
     } else {
       const body = razorpayOrderId + '|' + razorpayPaymentId
       const expectedSignature = crypto
@@ -247,7 +252,7 @@ exports.verifyPayment = async (req, res) => {
       if (expectedSignature !== razorpaySignature) {
         return res.status(400).json({
           success: false,
-          message: 'Payment verification failed'
+          message: 'Payment verification failed: Invalid signature'
         })
       }
     }
