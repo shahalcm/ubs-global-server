@@ -121,8 +121,7 @@ exports.createRazorpayOrder = async (req, res) => {
 
     const userCurrency = (req.body.currency || 'INR').toUpperCase()
     const currency = userCurrency
-    const reqAmount = Number(req.body.amount)
-    const finalGrandTotal = reqAmount && !isNaN(reqAmount) && reqAmount > 0 ? reqAmount : grandTotal
+    const finalGrandTotal = grandTotal
 
     // Calculate INR equivalent for Razorpay API (Razorpay processes payments in INR paise)
     const grandTotalINR = userCurrency === 'INR' ? finalGrandTotal : finalGrandTotal * 87.0
@@ -269,7 +268,11 @@ exports.verifyPayment = async (req, res) => {
         .digest('hex')
 
       if (expectedSignature !== razorpaySignature) {
-        console.warn('⚠️ Razorpay signature mismatch, accepting fallback verification in dev mode for order:', orderId)
+        console.error('❌ Invalid Razorpay signature verification for order:', orderId)
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid payment signature'
+        })
       }
     }
 

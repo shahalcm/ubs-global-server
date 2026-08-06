@@ -61,21 +61,25 @@ exports.login = async (req, res) => {
       })
     }
 
-    // If password provided, verify password
-    if (password) {
-      if (!user.password) {
-        return res.status(400).json({
-          success: false,
-          message: 'No password set for this account. Please login using OTP.'
-        })
-      }
-      const isMatch = await bcrypt.compare(password, user.password)
-      if (!isMatch) {
-        return res.status(400).json({
-          success: false,
-          message: 'Incorrect password. Please try again or click Forgot Password.'
-        })
-      }
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required'
+      })
+    }
+
+    if (!user.password) {
+      return res.status(400).json({
+        success: false,
+        message: 'No password set for this account. Please login using OTP.'
+      })
+    }
+    const isMatch = await bcrypt.compare(password, user.password)
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: 'Incorrect password. Please try again or click Forgot Password.'
+      })
     }
 
     const token = generateUserToken(user._id)
@@ -126,13 +130,13 @@ exports.resetPasswordOtp = async (req, res) => {
     }
 
     const cleanPhone = phone.trim().replace(/\s+/g, '')
-    const cleanOtp = (otp || '').trim()
+    if (!cleanOtp) {
+      return res.status(400).json({ success: false, message: 'OTP is required for password reset' })
+    }
 
-    if (cleanOtp) {
-      const isValid = await verifyOTP(cleanPhone, cleanOtp, true)
-      if (!isValid) {
-        return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
-      }
+    const isValid = await verifyOTP(cleanPhone, cleanOtp, true)
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
     }
 
     const user = await User.findOne({
