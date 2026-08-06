@@ -120,6 +120,7 @@ exports.createRazorpayOrder = async (req, res) => {
     const adminEarnings = commissionAmount
 
     const userCurrency = (req.body.currency || 'INR').toUpperCase()
+    const currency = userCurrency
     const reqAmount = Number(req.body.amount)
     const finalGrandTotal = reqAmount && !isNaN(reqAmount) && reqAmount > 0 ? reqAmount : grandTotal
 
