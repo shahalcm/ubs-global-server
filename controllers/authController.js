@@ -1,7 +1,7 @@
 const User = require('../models/User')
 const bcrypt = require('bcryptjs')
 const { generateUserToken, generateAdminToken } = require('../utils/generateToken')
-const { sendOTP, verifyOTP, normalizePhone } = require('../utils/sendOTP')
+const { sendOTP, verifyOTP } = require('../utils/sendOTP')
 
 // Send OTP
 exports.sendOTP = async (req, res) => {
@@ -47,11 +47,7 @@ exports.login = async (req, res) => {
     const { phone, email, password } = req.body
 
     let query = {}
-    if (phone) {
-      const normPhone = normalizePhone(phone)
-      const rawPhone = phone.trim()
-      query.phone = { $in: [normPhone, rawPhone, phone, rawPhone.replace(/^\+91/, ''), rawPhone.replace(/^91/, '')] }
-    }
+    if (phone) query.phone = phone.trim()
     else if (email) query.email = email.trim().toLowerCase()
     else {
       return res.status(400).json({ success: false, message: 'Phone number or email is required' })
@@ -106,11 +102,7 @@ exports.forgotPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Phone number is required' })
     }
 
-    const normPhone = normalizePhone(phone)
-    const rawPhone = phone.trim()
-    const user = await User.findOne({
-      phone: { $in: [normPhone, rawPhone, phone, rawPhone.replace(/^\+91/, ''), rawPhone.replace(/^91/, '')] }
-    })
+    const user = await User.findOne({ phone: phone.trim() })
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -138,21 +130,22 @@ exports.resetPasswordOtp = async (req, res) => {
     }
 
     const cleanPhone = phone.trim().replace(/\s+/g, '')
-    const cleanOtp = (otp || '').trim()
     if (!cleanOtp) {
       return res.status(400).json({ success: false, message: 'OTP is required for password reset' })
     }
 
-    const isValid = await verifyOTP(cleanPhone, cleanOtp)
+    const isValid = await verifyOTP(cleanPhone, cleanOtp, true)
     if (!isValid) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' })
     }
 
-    const normPhone = normalizePhone(phone)
-    const rawPhone = phone.trim()
     const user = await User.findOne({
-      phone: { $in: [normPhone, rawPhone, phone, rawPhone.replace(/^\+91/, ''), rawPhone.replace(/^91/, '')] }
-    })
+      $or: [
+        { phone: cleanPhone },
+        { phone: phone.trim() }
+      ]
+    }).select('+password')
+
     if (!user) {
       return res.status(404).json({ success: false, message: 'No registered user found with this phone number' })
     }

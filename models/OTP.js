@@ -7,7 +7,6 @@ const otpSchema = new mongoose.Schema({
     default: () => new Date(Date.now() + 5 * 60 * 1000)
   },
   isUsed: { type: Boolean, default: false },
-  attempts: { type: Number, default: 0 }
 }, { timestamps: true })
 otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 module.exports = mongoose.model('OTP', otpSchema)
