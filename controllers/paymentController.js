@@ -462,29 +462,57 @@ exports.verifyPayment = async (req, res) => {
           const defaultPickup = seller.pickupAddresses?.find(p => p.isDefault) || seller.pickupAddresses?.[0]
           const pickupLocationTag = defaultPickup?.pickup_location || seller.shopName?.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'primary_hub'
           const orderItems = (order.items || []).map(i => ({
-            name: i.productName,
+            name: i.productName || 'Product',
             sku: i.productSku || `SKU-${i.productId}`,
-            units: i.quantity,
-            selling_price: i.price,
+            units: i.quantity || 1,
+            selling_price: i.price || 1,
             discount: 0, tax: 0, hsn: 0
           }))
+
+          const addr = order.deliveryAddress || {}
+          const rawName = (addr.fullName || addr.name || order.buyerId?.name || 'Customer').trim()
+          const nameParts = rawName.split(' ')
+          const firstName = nameParts[0] || 'Customer'
+          const lastName = nameParts.slice(1).join(' ') || 'User'
+          const street = (addr.street || 'Main Street').trim()
+          const streetValid = street.length >= 3 ? street : `${street} Street`
+          const city = (addr.city || 'New Delhi').trim()
+          const state = (addr.state || city || 'Delhi').trim()
+          const pincode = (addr.zipCode || '110001').trim()
+          const country = (addr.country || 'India').trim()
+          const email = (addr.email || order.buyerId?.email || 'customer@ubsglobal.com').trim()
+          const rawPhone = (addr.phone || order.buyerId?.phone || '9999999999').trim().replace(/\D/g, '')
+          const phone = rawPhone.length >= 10 ? rawPhone.slice(-10) : '9999999999'
+
           const srPayload = {
             order_id: order.orderNumber,
             order_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
             pickup_location: pickupLocationTag,
             comment: order.sellerNote || 'UBS Global Order',
-            billing_customer_name: order.deliveryAddress?.fullName || order.buyerId?.name || 'Customer',
-            billing_address: order.deliveryAddress?.street || 'Main Street',
-            billing_city: order.deliveryAddress?.city || 'Delhi',
-            billing_pincode: order.deliveryAddress?.zipCode || '110001',
-            billing_state: order.deliveryAddress?.state || 'Delhi',
-            billing_country: order.deliveryAddress?.country || 'India',
-            billing_email: order.deliveryAddress?.email || order.buyerId?.email || 'customer@ubsglobal.com',
-            billing_phone: order.deliveryAddress?.phone || order.buyerId?.phone || '9999999999',
-            shipping_is_billing: true,
+            billing_customer_name: firstName,
+            billing_last_name: lastName,
+            billing_address: streetValid,
+            billing_address_2: (addr.landmark || '').trim(),
+            billing_city: city,
+            billing_pincode: pincode,
+            billing_state: state,
+            billing_country: country,
+            billing_email: email,
+            billing_phone: phone,
+            shipping_is_billing: 1,
+            shipping_customer_name: firstName,
+            shipping_last_name: lastName,
+            shipping_address: streetValid,
+            shipping_address_2: (addr.landmark || '').trim(),
+            shipping_city: city,
+            shipping_pincode: pincode,
+            shipping_state: state,
+            shipping_country: country,
+            shipping_email: email,
+            shipping_phone: phone,
             order_items: orderItems,
             payment_method: 'Prepaid',
-            sub_total: order.subtotal,
+            sub_total: order.subtotal || 1,
             length: 10, width: 10, height: 10, weight: 0.5
           }
           const srRes = await shiprocketService.createOrder(srPayload).catch(e => console.warn('Shiprocket create order:', e.message))

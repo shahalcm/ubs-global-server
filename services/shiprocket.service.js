@@ -173,8 +173,12 @@ class ShiprocketService {
       const response = await this.client.post('/orders/create/adhoc', orderData)
       return response.data
     } catch (error) {
-      console.error('❌ [Shiprocket Create Order Error]:', error.response?.data || error.message)
-      throw new Error(error.response?.data?.message || 'Failed to create order on Shiprocket')
+      console.warn('⚠️ [Shiprocket Create Order Notice]:', error.response?.data || error.message)
+      return {
+        success: false,
+        error: error.response?.data,
+        message: error.response?.data?.message || 'Failed to create order on Shiprocket'
+      }
     }
   }
 
