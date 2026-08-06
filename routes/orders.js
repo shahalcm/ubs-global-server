@@ -20,5 +20,7 @@ router.post('/:id/generate-pickup', protect, orderController.generatePickup)
 router.post('/:id/generate-manifest', protect, orderController.generateManifest)
 router.post('/:id/generate-label', protect, orderController.generateLabel)
 router.post('/:id/generate-invoice', protect, orderController.generateInvoice)
+router.get('/:id/view-invoice', orderController.viewInvoice)
+router.get('/:id/view-label', orderController.viewLabel)
 
 module.exports = router

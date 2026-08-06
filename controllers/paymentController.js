@@ -119,19 +119,20 @@ exports.createRazorpayOrder = async (req, res) => {
     const sellerEarnings = subtotal
     const adminEarnings = commissionAmount
 
-    const currency = (req.body.currency || 'USD').toUpperCase()
+    const userCurrency = (req.body.currency || 'INR').toUpperCase()
     const reqAmount = Number(req.body.amount)
     const finalGrandTotal = reqAmount && !isNaN(reqAmount) && reqAmount > 0 ? reqAmount : grandTotal
 
-    // Convert to smallest currency unit (cents/paise)
-    const amountInSmallestUnit = Math.round(finalGrandTotal * 100)
+    // Calculate INR equivalent for Razorpay API (Razorpay processes payments in INR paise)
+    const grandTotalINR = userCurrency === 'INR' ? finalGrandTotal : finalGrandTotal * 87.0
+    const amountInPaise = Math.round(grandTotalINR * 100)
 
     console.log('💳 [Backend Razorpay Order Debug]:', {
       selectedCountry: formattedDeliveryAddress?.country || 'Not specified',
-      selectedCurrency: currency,
+      selectedCurrency: userCurrency,
       amountSentToBackend: finalGrandTotal.toFixed(2),
-      razorpayOrderAmount: amountInSmallestUnit,
-      razorpayOrderCurrency: currency
+      amountInPaise,
+      razorpayOrderCurrency: 'INR'
     })
 
     let targetSellerId = sellerId
@@ -156,15 +157,15 @@ exports.createRazorpayOrder = async (req, res) => {
       }
     }
 
-    // Create Razorpay order
+    // Create Razorpay order (always in INR for Razorpay SDK compatibility)
     let razorpayOrder
     if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'rzp_test_your_key_id' || process.env.RAZORPAY_KEY_ID === 'rzp_test_placeholder') {
       razorpayOrder = { id: `order_mock_${Date.now()}` }
     } else {
       try {
         razorpayOrder = await razorpay.orders.create({
-          amount: amountInSmallestUnit,
-          currency: currency,
+          amount: amountInPaise,
+          currency: 'INR',
           receipt: `receipt_${Date.now()}`,
           notes: {
             buyerId: req.user._id.toString(),
@@ -207,8 +208,9 @@ exports.createRazorpayOrder = async (req, res) => {
     res.json({
       success: true,
       razorpayOrderId: razorpayOrder.id,
-      amount: amountInSmallestUnit,
-      currency,
+      amount: amountInPaise,
+      currency: 'INR',
+      userCurrency,
       orderId: order._id,
       orderNumber: order.orderNumber,
       key: process.env.RAZORPAY_KEY_ID,

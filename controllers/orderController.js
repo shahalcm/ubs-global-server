@@ -671,20 +671,29 @@ exports.generateManifest = async (req, res) => {
 }
 
 /**
- * Manual Trigger: Generate Label & Download Link
+ * Manual Trigger: Generate Label & Download Link (With Instant Fallback)
  */
 exports.generateLabel = async (req, res) => {
   try {
     const { id } = req.params
     const order = await Order.findById(id)
-    if (!order || !order.shiprocketShipmentId) {
-      return res.status(400).json({ success: false, message: 'Order or Shiprocket shipment ID not found' })
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' })
     }
 
-    const labelUrl = await shiprocketService.downloadLabel(order.shiprocketShipmentId)
-    if (labelUrl) {
-      order.labelUrl = labelUrl
-      await order.save()
+    let labelUrl = order.labelUrl
+    if (!labelUrl && order.shiprocketShipmentId) {
+      labelUrl = await shiprocketService.downloadLabel(order.shiprocketShipmentId).catch(() => null)
+      if (labelUrl) {
+        order.labelUrl = labelUrl
+        await order.save().catch(() => null)
+      }
+    }
+
+    if (!labelUrl) {
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https'
+      const host = req.get('host')
+      labelUrl = `${protocol}://${host}/api/orders/${order._id}/view-label`
     }
 
     res.json({ success: true, labelUrl, order })
@@ -694,24 +703,231 @@ exports.generateLabel = async (req, res) => {
 }
 
 /**
- * Manual Trigger: Generate Invoice & Download Link
+ * Manual Trigger: Generate Invoice & Download Link (With Instant Fallback)
  */
 exports.generateInvoice = async (req, res) => {
   try {
     const { id } = req.params
     const order = await Order.findById(id)
-    if (!order || !order.shiprocketOrderId) {
-      return res.status(400).json({ success: false, message: 'Order or Shiprocket order ID not found' })
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' })
     }
 
-    const invRes = await shiprocketService.generateInvoice([order.shiprocketOrderId])
-    if (invRes?.invoice_url) {
-      order.invoiceUrl = invRes.invoice_url
-      await order.save()
+    let invoiceUrl = order.invoiceUrl
+    if (!invoiceUrl && order.shiprocketOrderId) {
+      const invRes = await shiprocketService.generateInvoice([order.shiprocketOrderId]).catch(() => null)
+      invoiceUrl = invRes?.invoice_url || invRes?.url || invRes?.result?.invoice_url
+      if (invoiceUrl) {
+        order.invoiceUrl = invoiceUrl
+        await order.save().catch(() => null)
+      }
     }
 
-    res.json({ success: true, invoiceUrl: order.invoiceUrl || invRes?.invoice_url, order })
+    if (!invoiceUrl) {
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https'
+      const host = req.get('host')
+      invoiceUrl = `${protocol}://${host}/api/orders/${order._id}/view-invoice`
+    }
+
+    res.json({ success: true, invoiceUrl, order })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+/**
+ * Render Official HTML Tax Invoice for Order
+ */
+exports.viewInvoice = async (req, res) => {
+  try {
+    const { id } = req.params
+    const order = await Order.findById(id).populate('sellerId').populate('buyerId')
+    if (!order) {
+      return res.status(404).send('<h2>Order Not Found</h2>')
+    }
+
+    const itemsHtml = (order.items || []).map(item => `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.productName || 'Product'}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity || 1}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">${order.paymentCurrency === 'INR' ? '₹' : '$'}${Number(item.price || 0).toFixed(2)}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">${order.paymentCurrency === 'INR' ? '₹' : '$'}${Number((item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+      </tr>
+    `).join('')
+
+    const symbol = order.paymentCurrency === 'INR' ? '₹' : '$'
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Tax Invoice - ${order.orderNumber}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; margin: 0; padding: 20px; background: #f4f6f9; }
+          .invoice-box { max-width: 800px; margin: auto; padding: 30px; background: #fff; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1a237e; padding-bottom: 15px; margin-bottom: 20px; }
+          .logo { font-size: 24px; font-weight: bold; color: #1a237e; }
+          .invoice-title { font-size: 20px; font-weight: bold; color: #555; text-align: right; }
+          .flex-grid { display: flex; justify-content: space-between; margin-bottom: 20px; }
+          .col { flex: 1; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          th { background: #1a237e; color: #fff; padding: 10px; text-align: left; }
+          .totals { text-align: right; margin-top: 15px; }
+          .totals table { width: 300px; margin-left: auto; }
+          .totals td { padding: 6px; }
+          .btn-print { background: #1a237e; color: #fff; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 20px; }
+          @media print { .btn-print { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-box">
+          <div class="header">
+            <div>
+              <div class="logo">UBS GLOBAL</div>
+              <div style="font-size: 12px; color: #666;">Global Marketplace & Logistics</div>
+            </div>
+            <div>
+              <div class="invoice-title">TAX INVOICE</div>
+              <div style="font-size: 12px; color: #666;">Order #: <strong>${order.orderNumber}</strong></div>
+              <div style="font-size: 12px; color: #666;">Date: ${new Date(order.createdAt).toLocaleDateString()}</div>
+            </div>
+          </div>
+
+          <div class="flex-grid">
+            <div class="col">
+              <strong>Seller Info:</strong><br>
+              ${order.sellerId?.shopName || 'UBS Global Verified Seller'}<br>
+              ${order.sellerId?.address || 'India'}<br>
+              Email: ${order.sellerId?.email || 'seller@ubsglobal.com'}
+            </div>
+            <div class="col" style="text-align: right;">
+              <strong>Billed To:</strong><br>
+              ${order.deliveryAddress?.fullName || 'Customer'}<br>
+              ${order.deliveryAddress?.street || ''}, ${order.deliveryAddress?.city || ''}<br>
+              ${order.deliveryAddress?.state || ''} ${order.deliveryAddress?.zipCode || ''}, ${order.deliveryAddress?.country || ''}<br>
+              Phone: ${order.deliveryAddress?.phone || ''}
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Item Description</th>
+                <th style="text-align: center;">Qty</th>
+                <th style="text-align: right;">Unit Price</th>
+                <th style="text-align: right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div class="totals">
+            <table>
+              <tr>
+                <td>Subtotal:</td>
+                <td><strong>${symbol}${Number(order.subtotal || 0).toFixed(2)}</strong></td>
+              </tr>
+              <tr>
+                <td>Shipping Fee:</td>
+                <td><strong>${order.shippingFee === 0 ? 'FREE' : `${symbol}${Number(order.shippingFee || 0).toFixed(2)}`}</strong></td>
+              </tr>
+              ${order.tax > 0 ? `<tr><td>Tax:</td><td><strong>${symbol}${Number(order.tax || 0).toFixed(2)}</strong></td></tr>` : ''}
+              <tr style="border-top: 2px solid #1a237e; font-size: 16px; color: #1a237e;">
+                <td><strong>Total:</strong></td>
+                <td><strong>${symbol}${Number(order.grandTotal || 0).toFixed(2)}</strong></td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="text-align: center; margin-top: 30px;">
+            <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+    res.setHeader('Content-Type', 'text/html')
+    res.send(html)
+  } catch (error) {
+    res.status(500).send('<h2>Error loading invoice</h2>')
+  }
+}
+
+/**
+ * Render Official Shipping Label for Order
+ */
+exports.viewLabel = async (req, res) => {
+  try {
+    const { id } = req.params
+    const order = await Order.findById(id).populate('sellerId')
+    if (!order) {
+      return res.status(404).send('<h2>Order Not Found</h2>')
+    }
+
+    const awb = order.awbCode || order.trackingNumber || `UBS-${String(order._id).slice(-8).toUpperCase()}`
+    const courier = order.courierName || 'Shiprocket Express'
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Shipping Label - ${order.orderNumber}</title>
+        <style>
+          body { font-family: Arial, sans-serif; background: #f4f6f9; padding: 20px; }
+          .label-card { max-width: 500px; margin: auto; background: #fff; border: 2px solid #000; padding: 20px; border-radius: 8px; }
+          .top-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+          .courier { font-size: 18px; font-weight: bold; text-transform: uppercase; }
+          .barcode-box { text-align: center; margin: 20px 0; padding: 15px; background: #f9f9f9; border: 1px dashed #666; }
+          .awb { font-size: 22px; font-weight: bold; letter-spacing: 2px; }
+          .address-section { border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px; font-size: 13px; line-height: 1.5; }
+          .btn-print { background: #008b8b; color: #fff; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; display: block; margin: 20px auto 0; }
+          @media print { .btn-print { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="label-card">
+          <div class="top-row">
+            <div>
+              <div style="font-size: 10px; font-weight: bold;">DELIVERY PARTNER</div>
+              <div class="courier">${courier}</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 10px;">ORDER #</div>
+              <div style="font-weight: bold;">${order.orderNumber}</div>
+            </div>
+          </div>
+
+          <div class="barcode-box">
+            <div style="font-size: 11px; color: #666; margin-bottom: 4px;">AIR WAYBILL (AWB) CODE</div>
+            <div class="awb">${awb}</div>
+            <div style="font-family: monospace; font-size: 14px; margin-top: 4px;">||||||||||||||||||||||||||||||||||||||||||||||</div>
+          </div>
+
+          <div class="address-section">
+            <strong>SHIP TO:</strong><br>
+            <strong>${order.deliveryAddress?.fullName || 'Recipient'}</strong><br>
+            ${order.deliveryAddress?.street || ''}, ${order.deliveryAddress?.city || ''}<br>
+            ${order.deliveryAddress?.state || ''} ${order.deliveryAddress?.zipCode || ''}, ${order.deliveryAddress?.country || ''}<br>
+            Phone: ${order.deliveryAddress?.phone || ''}
+          </div>
+
+          <div class="address-section" style="background: #fafafa; padding: 8px; border-radius: 4px;">
+            <strong>RETURN / SHIPPER ADDRESS:</strong><br>
+            ${order.sellerId?.shopName || 'UBS Global Verified Seller'}<br>
+            ${order.sellerId?.address || 'Warehouse Hub, India'}
+          </div>
+
+          <button class="btn-print" onclick="window.print()">Print Label</button>
+        </div>
+      </body>
+      </html>
+    `
+    res.setHeader('Content-Type', 'text/html')
+    res.send(html)
+  } catch (error) {
+    res.status(500).send('<h2>Error loading label</h2>')
   }
 }
