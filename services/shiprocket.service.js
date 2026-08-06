@@ -35,6 +35,9 @@ class ShiprocketService {
       (response) => response,
       async (error) => {
         const originalRequest = error.config
+        if (!originalRequest) {
+          return Promise.reject(error)
+        }
         
         // Handle 401 Unauthorized - Auto Token Refresh
         if (error.response && error.response.status === 401 && !originalRequest._retry) {
@@ -42,8 +45,10 @@ class ShiprocketService {
           console.warn('⚠️ [Shiprocket] Received 401 Unauthorized. Refreshing token...')
           try {
             await this.authenticate(true) // Force fresh token
-            originalRequest.headers.Authorization = `Bearer ${this.token}`
-            return this.client(originalRequest)
+            if (this.token) {
+              originalRequest.headers.Authorization = `Bearer ${this.token}`
+              return this.client(originalRequest)
+            }
           } catch (authErr) {
             console.error('❌ [Shiprocket] Re-authentication failed:', authErr.message)
             return Promise.reject(authErr)
@@ -81,9 +86,9 @@ class ShiprocketService {
     const email = process.env.SHIPROCKET_API_EMAIL
     const password = process.env.SHIPROCKET_API_PASSWORD
 
-    if (!email || !password) {
-      console.error('❌ [Shiprocket] Missing API Credentials in environment variables.')
-      throw new Error('SHIPROCKET_API_EMAIL and SHIPROCKET_API_PASSWORD are required.')
+    if (!email || !password || email === 'your_shiprocket_email@example.com') {
+      console.warn('ℹ️ [Shiprocket] API credentials (SHIPROCKET_API_EMAIL / SHIPROCKET_API_PASSWORD) not configured.')
+      return null
     }
 
     try {
@@ -107,8 +112,18 @@ class ShiprocketService {
       }
     } catch (error) {
       console.error('❌ [Shiprocket Auth Failed]:', error.response?.data || error.message)
-      throw new Error(`Shiprocket Auth Failed: ${error.response?.data?.message || error.message}`)
+      return null
     }
+  }
+
+  /**
+   * Get cached or fresh authentication token
+   */
+  async getToken() {
+    if (!process.env.SHIPROCKET_API_EMAIL || !process.env.SHIPROCKET_API_PASSWORD) {
+      return null
+    }
+    return this.authenticate()
   }
 
   /**
