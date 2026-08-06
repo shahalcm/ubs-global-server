@@ -286,19 +286,37 @@ exports.verifyPayment = async (req, res) => {
       })
     }
 
-    // Strict HMAC Signature Verification
-    const body = razorpayOrderId + '|' + razorpayPaymentId
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
-      .digest('hex')
+    // Check for development mode mock payment
+    const isDevMock =
+      process.env.NODE_ENV !== 'production' &&
+      (
+        (razorpayOrderId && razorpayOrderId.startsWith('order_mock_')) ||
+        (razorpayPaymentId && razorpayPaymentId.startsWith('pay_mock_')) ||
+        (razorpaySignature && razorpaySignature.startsWith('sig_mock_'))
+      )
 
-    if (expectedSignature !== razorpaySignature) {
-      console.error('❌ Invalid Razorpay signature verification for order:', orderId)
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid payment signature'
-      })
+    if (isDevMock) {
+      console.log('ℹ️ [Development Mode] Mock payment signature verification accepted for order:', orderId)
+    } else {
+      // Strict HMAC Signature Verification
+      const body = razorpayOrderId + '|' + razorpayPaymentId
+      const expectedSignature = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(body.toString())
+        .digest('hex')
+
+      if (expectedSignature !== razorpaySignature) {
+        console.error('❌ Invalid Razorpay signature verification for order:', orderId, {
+          razorpayOrderId,
+          razorpayPaymentId,
+          receivedSignature: razorpaySignature,
+          expectedSignature
+        })
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid payment signature'
+        })
+      }
     }
 
     // Update order status to paid
