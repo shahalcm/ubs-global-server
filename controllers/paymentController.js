@@ -119,9 +119,9 @@ exports.createRazorpayOrder = async (req, res) => {
     const sellerEarnings = subtotal
     const adminEarnings = commissionAmount
 
-    const currency = (req.body.currency || 'INR').toUpperCase()
+    const currency = 'INR'
 
-    // Convert to paise/cents (Razorpay uses smallest currency unit)
+    // Convert to paise (Razorpay uses smallest currency unit)
     const amountInSmallestUnit = Math.round(grandTotal * 100)
 
     let targetSellerId = sellerId
@@ -154,7 +154,7 @@ exports.createRazorpayOrder = async (req, res) => {
       try {
         razorpayOrder = await razorpay.orders.create({
           amount: amountInSmallestUnit,
-          currency,
+          currency: 'INR',
           receipt: `receipt_${Date.now()}`,
           notes: {
             buyerId: req.user._id.toString(),
@@ -177,6 +177,7 @@ exports.createRazorpayOrder = async (req, res) => {
       tax: Number(tax.toFixed(2)),
       grandTotal: Number(grandTotal.toFixed(2)),
       paymentMethod: 'razorpay',
+      paymentCurrency: 'INR',
       paymentStatus: 'pending',
       razorpayOrderId: razorpayOrder.id,
       commissionPercent,
