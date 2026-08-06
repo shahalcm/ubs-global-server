@@ -247,33 +247,40 @@ exports.verifyPayment = async (req, res) => {
       orderId
     } = req.body
 
-    // Verify signature
-    const isMockVerification =
-      !razorpayPaymentId ||
-      !razorpaySignature ||
-      (razorpayOrderId && razorpayOrderId.startsWith('order_mock_')) ||
-      (razorpayPaymentId && razorpayPaymentId.startsWith('pay_mock_')) ||
-      (razorpaySignature && razorpaySignature.startsWith('sig_mock_')) ||
-      !process.env.RAZORPAY_KEY_SECRET ||
-      process.env.RAZORPAY_KEY_SECRET === 'your_razorpay_secret' ||
-      process.env.RAZORPAY_KEY_SECRET === 'LgM5XP1D5C17BHQthHfmLNxS'
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Razorpay order ID, payment ID, and signature are required for verification'
+      })
+    }
 
-    if (isMockVerification) {
-      console.log('ℹ️ Payment signature verification accepted for order:', orderId)
-    } else {
-      const body = razorpayOrderId + '|' + razorpayPaymentId
-      const expectedSignature = crypto
-        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-        .update(body.toString())
-        .digest('hex')
+    const secret = process.env.RAZORPAY_KEY_SECRET || 'LgM5XP1D5C17BHQthHfmLNxS'
+    const body = razorpayOrderId + '|' + razorpayPaymentId
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(body.toString())
+      .digest('hex')
 
-      if (expectedSignature !== razorpaySignature) {
-        console.error('❌ Invalid Razorpay signature verification for order:', orderId)
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid payment signature'
-        })
-      }
+    if (expectedSignature !== razorpaySignature) {
+      console.error('❌ Invalid Razorpay signature verification for order:', orderId)
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment signature verification failed'
+      })
+    }
+
+    // Check if order exists and idempotency check
+    const existingOrder = await Order.findById(orderId)
+    if (!existingOrder) {
+      return res.status(404).json({ success: false, message: 'Order not found for verification' })
+    }
+
+    if (existingOrder.paymentStatus === 'paid') {
+      return res.json({
+        success: true,
+        message: 'Order is already verified and paid',
+        order: existingOrder
+      })
     }
 
     // Update order
@@ -282,8 +289,8 @@ exports.verifyPayment = async (req, res) => {
       {
         paymentStatus: 'paid',
         orderStatus: 'placed',
-        razorpayPaymentId: razorpayPaymentId || `pay_verified_${Date.now()}`,
-        razorpaySignature: razorpaySignature || `sig_verified_${Date.now()}`,
+        razorpayPaymentId: razorpayPaymentId,
+        razorpaySignature: razorpaySignature,
         paidAt: new Date(),
         $push: {
           timeline: {

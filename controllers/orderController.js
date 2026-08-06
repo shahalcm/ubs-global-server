@@ -355,7 +355,7 @@ exports.placeOrder = async (req, res) => {
         grandTotal,
         paymentMethod: paymentMethod || 'cod',
         paymentIntentId,
-        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
+        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
         deliveryAddress: formattedDeliveryAddress,
         sellerNote: (sellerNote || '').trim(),
         shippingSpeed: shippingSpeed || 'standard',
@@ -379,13 +379,15 @@ exports.placeOrder = async (req, res) => {
         sellerEarnings,
         adminEarnings,
         paymentMethod,
-        status: order.paymentStatus === 'paid' ? 'completed' : 'pending'
+        status: 'pending'
       })
 
-      // Execute automated Shiprocket API Pipeline in background
-      processShiprocketOrderPipeline(order, seller).catch(err => {
-        console.error('Shiprocket pipeline error:', err.message)
-      })
+      // Execute automated Shiprocket API Pipeline in background ONLY for COD orders
+      if (paymentMethod === 'cod') {
+        processShiprocketOrderPipeline(order, seller).catch(err => {
+          console.error('Shiprocket pipeline error:', err.message)
+        })
+      }
 
       // Socket.io real-time alerts
       const socketIo = global.io
