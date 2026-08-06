@@ -110,28 +110,32 @@ if (process.env.NODE_ENV === 'development') {
 // Passport
 app.use(passport.initialize())
 
-// Health check route
+// Health check routes for Railway deployment
 app.get('/', (req, res) => {
   const mongoose = require('mongoose')
-
-  res.json({
+  res.status(200).json({
+    status: 'online',
     message: '🚀 UBS Global API Running',
     version: '1.0.0',
-    database:
-      mongoose.connection.readyState === 1
-        ? 'Connected'
-        : 'Disconnected'
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Connecting'
   })
 })
 
-// Database connection check middleware
-app.use((req, res, next) => {
-  const mongoose = require('mongoose')
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date() })
+})
 
+// Database connection check middleware (bypass for health check routes)
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path === '/health') {
+    return next()
+  }
+
+  const mongoose = require('mongoose')
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
       success: false,
-      message: 'Service unavailable: database not connected'
+      message: 'Service unavailable: database connecting...'
     })
   }
 
@@ -207,11 +211,27 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🖥️ Admin URL: ${process.env.ADMIN_URL}`)
 })
 
-// Global exception safety nets
+// Global exception safety nets & signal handlers
 process.on('uncaughtException', (error) => {
   console.error('💥 UNCAUGHT EXCEPTION PREVENTED CRASH:', error.stack || error)
 })
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('💥 UNHANDLED REJECTION AT:', promise, 'REASON:', reason)
+})
+
+process.on('SIGTERM', () => {
+  console.log('👋 SIGTERM signal received: closing HTTP server gracefully')
+  server.close(() => {
+    console.log('HTTP server closed')
+    process.exit(0)
+  })
+})
+
+process.on('SIGINT', () => {
+  console.log('👋 SIGINT signal received: closing HTTP server gracefully')
+  server.close(() => {
+    console.log('HTTP server closed')
+    process.exit(0)
+  })
 })
