@@ -1,3 +1,4 @@
+const mongoose = require('mongoose')
 const Order = require('../models/Order')
 const Product = require('../models/Product')
 const Seller = require('../models/Seller')
@@ -429,23 +430,35 @@ exports.getMyOrders = async (req, res) => {
 }
 
 /**
- * Track Order Details
+ * Track Order Details (Non-blocking, instant response with fallback)
  */
 exports.trackOrder = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id)
+    const { id } = req.params
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid Order ID' })
+    }
+
+    const order = await Order.findById(id)
       .populate('sellerId', 'shopName ownerName phone email address pickupAddresses')
+      .populate('buyerId', 'name email phone')
 
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' })
     }
 
-    // Optionally sync live tracking if AWB exists
+    // Immediately respond to client with order & cached tracking events
+    res.json({ success: true, order })
+
+    // Background live Shiprocket tracking sync with 3s safety timeout
     if (order.awbCode) {
-      try {
-        const liveTracking = await shiprocketService.trackShipment(order.awbCode)
+      Promise.race([
+        shiprocketService.trackShipment(order.awbCode),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Shiprocket track timeout')), 3000))
+      ]).then(liveTracking => {
         if (liveTracking?.tracking_data?.shipment_track_activities) {
-          order.trackingEvents = liveTracking.tracking_data.shipment_track_activities.map(act => ({
+          const events = liveTracking.tracking_data.shipment_track_activities.map(act => ({
             activity: act.activity || act.sr_status_label,
             location: act.location || '',
             date: act.date || '',
@@ -454,16 +467,18 @@ exports.trackOrder = async (req, res) => {
             sr_status: act.sr_status || '',
             timestamp: new Date()
           }))
-          await order.save()
+          if (events.length > 0) {
+            order.trackingEvents = events
+            order.save().catch(e => console.warn('Save order tracking error:', e.message))
+          }
         }
-      } catch (e) {
-        console.warn('Live tracking fetch failed:', e.message)
-      }
+      }).catch(err => {
+        console.warn('⚠️ Live tracking background sync warning:', err.message)
+      })
     }
-
-    res.json({ success: true, order })
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message })
+    console.error('Track order error:', error.message)
+    res.status(500).json({ success: false, message: error.message || 'Error tracking order' })
   }
 }
 

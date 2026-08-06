@@ -1,3 +1,4 @@
+const mongoose = require('mongoose')
 const Razorpay = require('razorpay')
 const crypto = require('crypto')
 const Order = require('../models/Order')
@@ -9,10 +10,11 @@ const User = require('../models/User')
 const Notification = require('../models/Notification')
 const Withdrawal = require('../models/Withdrawal')
 const { sendEmail } = require('../utils/sendEmail')
+const shiprocketService = require('../services/shiprocket.service')
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
+  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'rzp_secret_placeholder'
 })
 
 // STEP 1: Create Razorpay order
@@ -416,6 +418,63 @@ exports.verifyPayment = async (req, res) => {
     } catch (emailErr) {
       console.log('Error sending seller order notification email:', emailErr.message)
     }
+
+    // Trigger automated Shiprocket pipeline (Create Order, Assign AWB, Generate Pickup)
+    (async () => {
+      try {
+        const seller = await Seller.findById(order.sellerId._id)
+        if (seller) {
+          const defaultPickup = seller.pickupAddresses?.find(p => p.isDefault) || seller.pickupAddresses?.[0]
+          const pickupLocationTag = defaultPickup?.pickup_location || seller.shopName.toLowerCase().replace(/[^a-z0-9]/g, '_')
+          const orderItems = order.items.map(i => ({
+            name: i.productName,
+            sku: i.productSku || `SKU-${i.productId}`,
+            units: i.quantity,
+            selling_price: i.price,
+            discount: 0, tax: 0, hsn: 0
+          }))
+          const srPayload = {
+            order_id: order.orderNumber,
+            order_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            pickup_location: pickupLocationTag,
+            comment: order.sellerNote || 'UBS Global Order',
+            billing_customer_name: order.deliveryAddress?.fullName || order.buyerId.name || 'Customer',
+            billing_address: order.deliveryAddress?.street || 'Main Street',
+            billing_city: order.deliveryAddress?.city || 'Delhi',
+            billing_pincode: order.deliveryAddress?.zipCode || '110001',
+            billing_state: order.deliveryAddress?.state || 'Delhi',
+            billing_country: order.deliveryAddress?.country || 'India',
+            billing_email: order.deliveryAddress?.email || order.buyerId.email || 'customer@ubsglobal.com',
+            billing_phone: order.deliveryAddress?.phone || order.buyerId.phone || '9999999999',
+            shipping_is_billing: true,
+            order_items: orderItems,
+            payment_method: 'Prepaid',
+            sub_total: order.subtotal,
+            length: 10, width: 10, height: 10, weight: 0.5
+          }
+          const srRes = await shiprocketService.createOrder(srPayload)
+          if (srRes?.order_id) {
+            order.shiprocketOrderId = String(srRes.order_id)
+            order.shiprocketShipmentId = String(srRes.shipment_id)
+            if (srRes.shipment_id) {
+              const awbRes = await shiprocketService.assignAWB({ shipment_id: srRes.shipment_id }).catch(e => console.warn('AWB assign:', e.message))
+              if (awbRes?.response?.data?.awb_code) {
+                order.awbCode = awbRes.response.data.awb_code
+                order.courierName = awbRes.response.data.courier_name || 'Shiprocket Courier'
+              }
+              await shiprocketService.generatePickup({ shipment_id: srRes.shipment_id }).catch(e => console.warn('Pickup gen:', e.message))
+              const labelRes = await shiprocketService.generateLabel({ shipment_id: srRes.shipment_id }).catch(e => null)
+              if (labelRes?.label_url) order.labelUrl = labelRes.label_url
+              const invRes = await shiprocketService.printInvoice({ ids: [srRes.order_id] }).catch(e => null)
+              if (invRes?.invoice_url) order.invoiceUrl = invRes.invoice_url
+            }
+            await order.save()
+          }
+        }
+      } catch (srErr) {
+        console.error('⚠️ Post-payment Shiprocket pipeline error:', srErr.message)
+      }
+    })()
 
     res.json({
       success: true,
