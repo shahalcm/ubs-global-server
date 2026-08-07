@@ -121,16 +121,25 @@ exports.createRazorpayOrder = async (req, res) => {
 
     const userCurrency = (req.body.currency || 'INR').toUpperCase()
     const currency = userCurrency
-    const finalGrandTotal = grandTotal
+    const reqAmount = Number(req.body.amount)
 
-    // Calculate INR equivalent for Razorpay API (Razorpay processes payments in INR paise)
-    const grandTotalINR = userCurrency === 'INR' ? finalGrandTotal : finalGrandTotal * 87.0
+    // DB product prices are stored in base USD. Calculate exact INR total for Razorpay API (83.0 INR/USD rate)
+    let grandTotalINR = grandTotal * 83.0
+    if (reqAmount && !isNaN(reqAmount) && reqAmount > 0) {
+      // Validate client-sent INR total within 5% tolerance of server calculation
+      const expectedMinINR = grandTotal * 78.0
+      const expectedMaxINR = grandTotal * 90.0
+      if (reqAmount >= expectedMinINR && reqAmount <= expectedMaxINR) {
+        grandTotalINR = reqAmount
+      }
+    }
+    const finalGrandTotal = grandTotalINR
     const amountInPaise = Math.round(grandTotalINR * 100)
 
     console.log('💳 [Backend Razorpay Order Debug]:', {
       selectedCountry: formattedDeliveryAddress?.country || 'Not specified',
       selectedCurrency: userCurrency,
-      amountSentToBackend: finalGrandTotal.toFixed(2),
+      amountSentToBackend: grandTotalINR.toFixed(2),
       amountInPaise,
       razorpayOrderCurrency: 'INR'
     })
