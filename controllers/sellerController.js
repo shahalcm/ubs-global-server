@@ -94,9 +94,9 @@ exports.applyAsSeller = async (req, res) => {
     } = req.body
     
     // Check if seller already exists for this user
-    const existingSeller = await Seller.findOne({ userId: req.user._id })
-    if (existingSeller) {
-      return res.status(400).json({ success: false, message: 'You have already applied to become a seller.' })
+    let existingSeller = await Seller.findOne({ userId: req.user._id })
+    if (existingSeller && existingSeller.registrationFeePaid) {
+      return res.status(400).json({ success: false, message: 'You have already submitted an application and paid the registration fee.' })
     }
 
     let shopLogoUrl = ''
@@ -146,33 +146,57 @@ exports.applyAsSeller = async (req, res) => {
     const oneYearFromNow = new Date()
     oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1)
 
-    const seller = new Seller({
-      userId: req.user._id,
-      shopName,
-      ownerName,
-      email: req.user.email,
-      phone,
-      address: {
-        street: address
-      },
-      businessType,
-      gstNumber,
-      website,
-      categories,
-      yearEstablished,
-      description,
-      shopLogo: shopLogoUrl,
-      idProof: idProofUrl,
-      bankDetails: parsedBankDetails,
-      registrationFeePaid: true,
-      registrationFeeAmount: feeAmount,
-      registrationFeeTransactionId: razorpayPaymentId || `TXN-REG-${Date.now()}`,
-      subscriptionPlan: 'Yearly',
-      subscriptionFee: feeAmount,
-      subscriptionStatus: 'active',
-      subscriptionExpiresAt: oneYearFromNow,
-      status: 'pending'
-    })
+    let seller = existingSeller
+    if (seller) {
+      seller.shopName = shopName || seller.shopName
+      seller.ownerName = ownerName || seller.ownerName
+      seller.phone = phone || seller.phone
+      seller.address = { street: address || seller.address?.street }
+      seller.businessType = businessType || seller.businessType
+      seller.gstNumber = gstNumber || seller.gstNumber
+      seller.website = website || seller.website
+      seller.categories = categories || seller.categories
+      seller.yearEstablished = yearEstablished || seller.yearEstablished
+      seller.description = description || seller.description
+      if (shopLogoUrl) seller.shopLogo = shopLogoUrl
+      if (idProofUrl) seller.idProof = idProofUrl
+      if (parsedBankDetails) seller.bankDetails = parsedBankDetails
+      seller.registrationFeePaid = true
+      seller.registrationFeeAmount = feeAmount
+      seller.registrationFeeTransactionId = razorpayPaymentId || `TXN-REG-${Date.now()}`
+      seller.subscriptionPlan = 'Yearly'
+      seller.subscriptionFee = feeAmount
+      seller.subscriptionStatus = 'active'
+      seller.subscriptionExpiresAt = oneYearFromNow
+    } else {
+      seller = new Seller({
+        userId: req.user._id,
+        shopName,
+        ownerName,
+        email: req.user.email,
+        phone,
+        address: {
+          street: address
+        },
+        businessType,
+        gstNumber,
+        website,
+        categories,
+        yearEstablished,
+        description,
+        shopLogo: shopLogoUrl,
+        idProof: idProofUrl,
+        bankDetails: parsedBankDetails,
+        registrationFeePaid: true,
+        registrationFeeAmount: feeAmount,
+        registrationFeeTransactionId: razorpayPaymentId || `TXN-REG-${Date.now()}`,
+        subscriptionPlan: 'Yearly',
+        subscriptionFee: feeAmount,
+        subscriptionStatus: 'active',
+        subscriptionExpiresAt: oneYearFromNow,
+        status: 'pending'
+      })
+    }
 
     await seller.save()
 
