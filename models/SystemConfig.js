@@ -11,7 +11,7 @@ const systemConfigSchema = new mongoose.Schema({
   faviconUrl: { type: String, default: '' },
 
   // Payments
-  storeRegistrationFee: { type: Number, default: 15 },
+  storeRegistrationFee: { type: Number, default: 10 },
   stripeEnabled: { type: Boolean, default: true },
   stripePublicKey: { type: String, default: '' },
   stripeSecretKey: { type: String, default: '' },

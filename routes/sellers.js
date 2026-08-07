@@ -5,6 +5,7 @@ const { protect } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 
 router.get('/registration-fee', sellerController.getRegistrationFee);
+router.post('/create-subscription-order', protect, sellerController.createSubscriptionOrder);
 
 router.post('/apply', protect, upload.fields([
   { name: 'shopLogo', maxCount: 1 },

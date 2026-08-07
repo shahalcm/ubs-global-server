@@ -123,7 +123,28 @@ exports.applyAsSeller = async (req, res) => {
     const SystemConfig = require('../models/SystemConfig')
     const Transaction = require('../models/Transaction')
     const config = await SystemConfig.findOne()
-    const feeAmount = Number(req.body.registrationFeeAmount) || config?.storeRegistrationFee || 15
+    const feeAmount = Number(req.body.registrationFeeAmount) || config?.storeRegistrationFee || 10
+
+    // Optional Razorpay signature verification for seller subscription fee
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body
+    if (razorpayOrderId && razorpayPaymentId && razorpaySignature) {
+      const crypto = require('crypto')
+      const body = razorpayOrderId + '|' + razorpayPaymentId
+      const expectedSignature = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
+        .update(body.toString())
+        .digest('hex')
+
+      if (expectedSignature !== razorpaySignature) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid Razorpay payment signature for seller registration fee'
+        })
+      }
+    }
+
+    const oneYearFromNow = new Date()
+    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1)
 
     const seller = new Seller({
       userId: req.user._id,
@@ -145,7 +166,11 @@ exports.applyAsSeller = async (req, res) => {
       bankDetails: parsedBankDetails,
       registrationFeePaid: true,
       registrationFeeAmount: feeAmount,
-      registrationFeeTransactionId: `TXN-REG-${Date.now()}`,
+      registrationFeeTransactionId: razorpayPaymentId || `TXN-REG-${Date.now()}`,
+      subscriptionPlan: 'Yearly',
+      subscriptionFee: feeAmount,
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: oneYearFromNow,
       status: 'pending'
     })
 
@@ -499,10 +524,59 @@ exports.getRegistrationFee = async (req, res) => {
   try {
     const SystemConfig = require('../models/SystemConfig')
     const config = await SystemConfig.findOne()
-    const fee = config?.storeRegistrationFee ?? 15
-    res.json({ success: true, registrationFee: fee })
+    const fee = config?.storeRegistrationFee ?? 10
+    res.json({ success: true, registrationFee: fee, plan: 'Yearly Plan', duration: '1 Year' })
   } catch (error) {
-    res.json({ success: true, registrationFee: 15 })
+    res.json({ success: true, registrationFee: 10, plan: 'Yearly Plan', duration: '1 Year' })
+  }
+}
+
+/**
+ * Create Razorpay Order for Seller Yearly Subscription Fee ($10 / year)
+ */
+exports.createSubscriptionOrder = async (req, res) => {
+  try {
+    const Razorpay = require('razorpay')
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID || 'rzp_live_placeholder',
+      key_secret: process.env.RAZORPAY_KEY_SECRET || 'rzp_live_secret_placeholder'
+    })
+
+    const SystemConfig = require('../models/SystemConfig')
+    const config = await SystemConfig.findOne()
+    const feeUSD = config?.storeRegistrationFee ?? 10
+    const feeINR = feeUSD * 87.0
+    const amountInPaise = Math.round(feeINR * 100)
+
+    let razorpayOrder
+    try {
+      razorpayOrder = await razorpay.orders.create({
+        amount: amountInPaise,
+        currency: 'INR',
+        receipt: `seller_sub_${Date.now()}`,
+        notes: {
+          buyerId: req.user._id.toString(),
+          type: 'seller_yearly_subscription'
+        }
+      })
+    } catch (rzpErr) {
+      console.error('Razorpay seller subscription order error:', rzpErr.message || rzpErr)
+      return res.status(500).json({
+        success: false,
+        message: `Failed to create Razorpay subscription order: ${rzpErr.message || 'Razorpay API error'}`
+      })
+    }
+
+    res.json({
+      success: true,
+      razorpayOrderId: razorpayOrder.id,
+      amount: amountInPaise,
+      amountUSD: feeUSD,
+      currency: 'INR',
+      key: process.env.RAZORPAY_KEY_ID
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
   }
 }
 
