@@ -214,6 +214,29 @@ exports.suspendSeller = async (req, res) => {
   res.json({ success: true, seller })
 }
 
+exports.updateSellerSubscription = async (req, res) => {
+  const { id } = req.params
+  const { subscriptionStatus, subscriptionFee, subscriptionExpiresAt, registrationFeePaid } = req.body
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid seller id' })
+  }
+  const seller = await Seller.findById(id)
+  if (!seller) {
+    return res.status(404).json({ success: false, message: 'Seller not found' })
+  }
+  
+  if (subscriptionStatus) seller.subscriptionStatus = subscriptionStatus
+  if (subscriptionFee !== undefined) {
+    seller.subscriptionFee = Number(subscriptionFee)
+    seller.registrationFeeAmount = Number(subscriptionFee)
+  }
+  if (subscriptionExpiresAt) seller.subscriptionExpiresAt = new Date(subscriptionExpiresAt)
+  if (registrationFeePaid !== undefined) seller.registrationFeePaid = Boolean(registrationFeePaid)
+  
+  await seller.save()
+  res.json({ success: true, message: 'Seller subscription updated successfully', seller })
+}
+
 exports.getUsers = async (req, res) => {
   const { role, page = 1, limit = 20, search } = req.query
   const query = {}
@@ -1065,7 +1088,7 @@ exports.updateSettings = async (req, res) => {
       'twoFactorMandatory', 'emailAlerts', 'smsNotifications', 'pushNotifications'
     ]
     const numberFields = [
-      'shippingRate', 'freeShippingThreshold', 'expressShippingRate', 'sessionTimeout'
+      'storeRegistrationFee', 'shippingRate', 'freeShippingThreshold', 'expressShippingRate', 'sessionTimeout'
     ]
     const stringFields = [
       'supportEmail', 'contactPhone', 'logoUrl', 'faviconUrl',

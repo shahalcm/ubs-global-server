@@ -12,6 +12,7 @@ router.get('/sellers', adminProtect, adminController.getSellers)
 router.patch('/sellers/:id/approve', adminProtect, adminController.approveSeller)
 router.patch('/sellers/:id/reject', adminProtect, adminController.rejectSeller)
 router.patch('/sellers/:id/suspend', adminProtect, adminController.suspendSeller)
+router.patch('/sellers/:id/subscription', adminProtect, adminController.updateSellerSubscription)
 
 // Users
 router.get('/users', adminProtect, adminController.getUsers)
