@@ -1543,15 +1543,36 @@ exports.getAllShipments = async (req, res) => {
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit))
 
-    // Calculate aggregated analytics
+    // Calculate aggregated analytics (on overall matching criteria, ignoring table status filter for KPI correctness)
+    const analyticsQuery = { ...query }
+    delete analyticsQuery.orderStatus
+
     const analytics = await Order.aggregate([
-      { $match: query },
+      { $match: analyticsQuery },
       {
         $group: {
           _id: null,
-          totalShippingCost: { $sum: '$shippingFee' },
-          totalRevenue: { $sum: '$grandTotal' },
-          count: { $sum: 1 }
+          totalShippingCost: { $sum: '$shippingCharge' },
+          totalRevenue: { $sum: '$shippingFee' },
+          count: {
+            $sum: {
+              $cond: [
+                {
+                  $in: [
+                    '$orderStatus',
+                    [
+                      'placed', 'confirmed', 'packed',
+                      'pickup_scheduled', 'picked_up',
+                      'shipped', 'in_transit', 'reached_origin_hub', 'reached_destination_hub',
+                      'out_for_delivery'
+                    ]
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          }
         }
       }
     ])
