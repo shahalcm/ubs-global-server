@@ -1675,7 +1675,6 @@ const RegionalPricingRule = require('../models/RegionalPricingRule')
 const PromoCode = require('../models/PromoCode')
 const PricingAuditLog = require('../models/PricingAuditLog')
 const SellerRegistrationOffer = require('../models/SellerRegistrationOffer')
-const cache = require('../utils/cache')
 
 // 1. Pricing Rules
 exports.getRegionalPricingRules = async (req, res) => {
