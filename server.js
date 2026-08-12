@@ -168,6 +168,7 @@ app.use('/api/reviews', require('./routes/reviews'))
 app.use('/api/banners', require('./routes/banners'))
 app.use('/api/admin', require('./routes/admin'))
 app.use('/api/public-settings', require('./routes/publicSettings'))
+app.use('/api/support-calls', require('./routes/supportCallRoutes'))
 app.use('/api/job-applications', require('./routes/jobApplications'))
 app.use('/api/properties', require('./routes/properties'))
 app.use('/api/bot-config', require('./routes/botConfig'))
@@ -176,7 +177,7 @@ app.use('/api/webhooks', require('./routes/webhooks'))
 
 // Socket handler
 require('./socket/socketHandler')(io)
-require('./socket/callSocket')(io)
+require('./socket/callSocket').socketHandler(io)
 
 // Start background tracking cron job & currency exchange rate fetcher
 const trackingCronService = require('./services/trackingCronService')
