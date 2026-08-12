@@ -83,4 +83,17 @@ router.get('/shipments', adminProtect, adminController.getAllShipments)
 router.patch('/sellers/:sellerId/verify-kyc', adminProtect, adminController.verifySellerKYC)
 router.post('/shipments/:orderId/sync-tracking', adminProtect, adminController.syncShipmentTracking)
 
+// Regional Seller Pricing & Promo System
+router.get('/seller-pricing/rules', adminProtect, adminController.getRegionalPricingRules)
+router.put('/seller-pricing/rules/:id', adminProtect, adminController.updateRegionalPricingRule)
+router.get('/seller-pricing/countries', adminProtect, adminController.getCountries)
+router.patch('/seller-pricing/countries/:id/region', adminProtect, adminController.moveCountryToRegion)
+router.patch('/seller-pricing/countries/:id/status', adminProtect, adminController.toggleCountryStatus)
+router.get('/seller-pricing/promos', adminProtect, adminController.getPromoCodes)
+router.post('/seller-pricing/promos', adminProtect, adminController.createPromoCode)
+router.put('/seller-pricing/promos/:id', adminProtect, adminController.updatePromoCode)
+router.delete('/seller-pricing/promos/:id', adminProtect, adminController.deletePromoCode)
+router.get('/seller-pricing/analytics', adminProtect, adminController.getSellerPricingAnalytics)
+router.get('/seller-pricing/audit-logs', adminProtect, adminController.getPricingAuditLogs)
+
 module.exports = router

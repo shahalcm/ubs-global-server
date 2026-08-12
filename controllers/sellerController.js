@@ -90,7 +90,11 @@ exports.applyAsSeller = async (req, res) => {
       website,
       categories,
       yearEstablished,
-      description
+      description,
+      offerId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature
     } = req.body
     
     // Check if seller already exists for this user
@@ -122,12 +126,41 @@ exports.applyAsSeller = async (req, res) => {
 
     const SystemConfig = require('../models/SystemConfig')
     const Transaction = require('../models/Transaction')
-    const config = await SystemConfig.findOne()
-    const feeAmount = Number(req.body.registrationFeeAmount) || config?.storeRegistrationFee || 10
+    const SellerRegistrationOffer = require('../models/SellerRegistrationOffer')
+    const PromoCode = require('../models/PromoCode')
 
-    // Optional Razorpay signature verification for seller subscription fee
-    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body
-    if (razorpayOrderId && razorpayPaymentId && razorpaySignature) {
+    let feeAmount = 10
+    let offer = null
+
+    if (offerId) {
+      offer = await SellerRegistrationOffer.findOne({ _id: offerId, userId: req.user._id })
+      if (!offer) {
+        return res.status(400).json({ success: false, message: 'Your seller registration offer has expired. Please refresh.' })
+      }
+      feeAmount = offer.finalAmount
+    } else {
+      const config = await SystemConfig.findOne()
+      feeAmount = Number(req.body.registrationFeeAmount) || config?.storeRegistrationFee || 10
+    }
+
+    // Secure Razorpay signature verification
+    if (feeAmount > 0) {
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment verification failed: missing payment details.'
+        })
+      }
+
+      // Check for replay attacks: ensure payment transaction has not been used already
+      const paymentReplayed = await Seller.findOne({ registrationFeeTransactionId: razorpayPaymentId })
+      if (paymentReplayed) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment has already been processed and cannot be reused.'
+        })
+      }
+
       const crypto = require('crypto')
       const body = razorpayOrderId + '|' + razorpayPaymentId
       const expectedSignature = crypto
@@ -140,6 +173,19 @@ exports.applyAsSeller = async (req, res) => {
           success: false,
           message: 'Invalid Razorpay payment signature for seller registration fee'
         })
+      }
+    }
+
+    // Update offer status and update promo usage if applicable
+    if (offer) {
+      offer.status = 'PAID'
+      await offer.save()
+      
+      if (offer.promoCode) {
+        await PromoCode.findOneAndUpdate(
+          { code: offer.promoCode },
+          { $inc: { usedCount: 1 } }
+        )
       }
     }
 
@@ -163,7 +209,7 @@ exports.applyAsSeller = async (req, res) => {
       if (parsedBankDetails) seller.bankDetails = parsedBankDetails
       seller.registrationFeePaid = true
       seller.registrationFeeAmount = feeAmount
-      seller.registrationFeeTransactionId = razorpayPaymentId || `TXN-REG-${Date.now()}`
+      seller.registrationFeeTransactionId = razorpayPaymentId || `FREE-REG-${Date.now()}`
       seller.subscriptionPlan = 'Yearly'
       seller.subscriptionFee = feeAmount
       seller.subscriptionStatus = 'active'
@@ -189,7 +235,7 @@ exports.applyAsSeller = async (req, res) => {
         bankDetails: parsedBankDetails,
         registrationFeePaid: true,
         registrationFeeAmount: feeAmount,
-        registrationFeeTransactionId: razorpayPaymentId || `TXN-REG-${Date.now()}`,
+        registrationFeeTransactionId: razorpayPaymentId || `FREE-REG-${Date.now()}`,
         subscriptionPlan: 'Yearly',
         subscriptionFee: feeAmount,
         subscriptionStatus: 'active',
@@ -213,9 +259,6 @@ exports.applyAsSeller = async (req, res) => {
       status: 'completed',
       paidAt: new Date()
     })
-
-    // Optionally update user role to seller
-    // await User.findByIdAndUpdate(req.user._id, { role: 'seller' })
 
     res.status(201).json({
       success: true,

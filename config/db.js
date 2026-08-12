@@ -32,6 +32,11 @@ const connectDB = async (retries = 5, backoffMs = 5000) => {
         })
         console.log(`✅ MongoDB Connected: ${conn.connection.host}`)
         console.log(`📦 Database: ${conn.connection.name}`)
+        
+        // Seed pricing configuration data
+        const seedPricingData = require('../utils/seedPricingData')
+        seedPricingData().catch(e => console.error('Failed to seed pricing data:', e))
+
         return
     } catch (error) {
       console.error(`❌ MongoDB Error: ${error.message}`)

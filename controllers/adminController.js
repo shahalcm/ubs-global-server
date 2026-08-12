@@ -1664,6 +1664,466 @@ exports.syncShipmentTracking = async (req, res) => {
   }
 }
 
+/**
+ * =========================================================================
+ * REGIONAL SELLER REGISTRATION FEE & PROMO SYSTEM - ADMIN ENDPOINTS
+ * =========================================================================
+ */
+
+const Country = require('../models/Country')
+const RegionalPricingRule = require('../models/RegionalPricingRule')
+const PromoCode = require('../models/PromoCode')
+const PricingAuditLog = require('../models/PricingAuditLog')
+const SellerRegistrationOffer = require('../models/SellerRegistrationOffer')
+const cache = require('../utils/cache')
+
+// 1. Pricing Rules
+exports.getRegionalPricingRules = async (req, res) => {
+  try {
+    const rules = await RegionalPricingRule.find().populate('promoCodeId')
+    res.json({ success: true, rules })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.updateRegionalPricingRule = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { name, baseAmount, discountType, discountValue, isActive, startsAt, expiresAt, countries } = req.body
+
+    const rule = await RegionalPricingRule.findById(id)
+    if (!rule) {
+      return res.status(404).json({ success: false, message: 'Pricing rule not found' })
+    }
+
+    const auditLogs = []
+    const fieldsToTrack = ['name', 'baseAmount', 'discountType', 'discountValue', 'isActive', 'startsAt', 'expiresAt']
+    
+    fieldsToTrack.forEach(field => {
+      if (req.body[field] !== undefined && String(req.body[field]) !== String(rule[field])) {
+        auditLogs.push({
+          adminId: req.admin._id,
+          adminName: req.admin.name || 'Admin',
+          action: 'UPDATE_PRICING_RULE',
+          target: rule.regionCode,
+          fieldChanged: field,
+          oldValue: rule[field],
+          newValue: req.body[field],
+          ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+        })
+        rule[field] = req.body[field]
+      }
+    })
+
+    if (countries !== undefined) {
+      if (JSON.stringify(countries) !== JSON.stringify(rule.countries)) {
+        auditLogs.push({
+          adminId: req.admin._id,
+          adminName: req.admin.name || 'Admin',
+          action: 'UPDATE_PRICING_RULE',
+          target: rule.regionCode,
+          fieldChanged: 'countries',
+          oldValue: rule.countries,
+          newValue: countries,
+          ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+        })
+        rule.countries = countries
+      }
+    }
+
+    await rule.save()
+    if (auditLogs.length > 0) {
+      await PricingAuditLog.insertMany(auditLogs)
+    }
+
+    // Invalidate cached mapping data
+    await cache.clear()
+
+    res.json({ success: true, message: 'Pricing rule updated successfully', rule })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// 2. Country-Region Mapping
+exports.getCountries = async (req, res) => {
+  try {
+    const { search = '', region = '', isActive = '' } = req.query
+    
+    const query = {}
+    if (search) {
+      query.$or = [
+        { countryName: { $regex: search, $options: 'i' } },
+        { countryCode: { $regex: search, $options: 'i' } }
+      ]
+    }
+    if (region) {
+      query.regionCode = region
+    }
+    if (isActive !== '') {
+      query.isActive = isActive === 'true'
+    }
+
+    const countries = await Country.find(query).sort({ countryName: 1 })
+    res.json({ success: true, countries })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.moveCountryToRegion = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { regionCode } = req.body
+
+    if (!['HIGH_COST', 'MIDDLE_COST', 'LOW_COST'].includes(regionCode)) {
+      return res.status(400).json({ success: false, message: 'Invalid region code' })
+    }
+
+    const country = await Country.findById(id)
+    if (!country) {
+      return res.status(404).json({ success: false, message: 'Country mapping not found' })
+    }
+
+    if (country.regionCode !== regionCode) {
+      // Create audit log
+      await PricingAuditLog.create({
+        adminId: req.admin._id,
+        adminName: req.admin.name || 'Admin',
+        action: 'MOVE_COUNTRY',
+        target: country.countryCode,
+        fieldChanged: 'regionCode',
+        oldValue: country.regionCode,
+        newValue: regionCode,
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+      })
+
+      // Update in corresponding RegionalPricingRule lists as well
+      await RegionalPricingRule.updateMany(
+        { countries: country.countryCode },
+        { $pull: { countries: country.countryCode } }
+      )
+      await RegionalPricingRule.updateOne(
+        { regionCode },
+        { $addToSet: { countries: country.countryCode } }
+      )
+
+      country.regionCode = regionCode
+      await country.save()
+
+      await cache.clear()
+    }
+
+    res.json({ success: true, message: `Country moved to ${regionCode} successfully`, country })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.toggleCountryStatus = async (req, res) => {
+  try {
+    const { id } = req.params
+    const country = await Country.findById(id)
+    if (!country) {
+      return res.status(404).json({ success: false, message: 'Country not found' })
+    }
+
+    const oldStatus = country.isActive
+    country.isActive = !country.isActive
+    await country.save()
+
+    await PricingAuditLog.create({
+      adminId: req.admin._id,
+      adminName: req.admin.name || 'Admin',
+      action: 'TOGGLE_COUNTRY_STATUS',
+      target: country.countryCode,
+      fieldChanged: 'isActive',
+      oldValue: oldStatus,
+      newValue: country.isActive,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+    })
+
+    await cache.clear()
+
+    res.json({ success: true, message: 'Country status updated successfully', country })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// 3. Promo Codes
+exports.getPromoCodes = async (req, res) => {
+  try {
+    const { search = '', region = '', isActive = '' } = req.query
+    
+    const query = {}
+    if (search) {
+      query.code = { $regex: search, $options: 'i' }
+    }
+    if (region) {
+      query.regionCode = region
+    }
+    if (isActive !== '') {
+      query.isActive = isActive === 'true'
+    }
+
+    const promos = await PromoCode.find(query).sort({ createdAt: -1 })
+    res.json({ success: true, promos })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.createPromoCode = async (req, res) => {
+  try {
+    const { code, discountType, discountValue, regionCode, countryCodes, maxUses, maxUsesPerSeller, startsAt, expiresAt, isActive } = req.body
+
+    if (!code || !discountValue || !regionCode) {
+      return res.status(400).json({ success: false, message: 'Code, discount value, and region code are required' })
+    }
+
+    // Prevent duplicate active promo code in the same region
+    if (isActive !== false) {
+      const duplicateActive = await PromoCode.findOne({ regionCode, isActive: true })
+      if (duplicateActive) {
+        return res.status(400).json({
+          success: false,
+          message: `There is already an active promo code (${duplicateActive.code}) for region ${regionCode}. Please disable it first.`
+        })
+      }
+    }
+
+    const promoCode = new PromoCode({
+      code: code.trim().toUpperCase(),
+      discountType: discountType || 'percentage',
+      discountValue,
+      regionCode,
+      countryCodes: countryCodes || [],
+      maxUses: maxUses !== undefined ? maxUses : 10000,
+      maxUsesPerSeller: maxUsesPerSeller !== undefined ? maxUsesPerSeller : 1,
+      startsAt: startsAt || new Date(),
+      expiresAt,
+      isActive: isActive !== undefined ? isActive : true
+    })
+
+    await promoCode.save()
+
+    // Associate it with the Regional Pricing Rule
+    if (promoCode.isActive) {
+      await RegionalPricingRule.updateOne(
+        { regionCode },
+        { promoCodeId: promoCode._id }
+      )
+    }
+
+    // Log action
+    await PricingAuditLog.create({
+      adminId: req.admin._id,
+      adminName: req.admin.name || 'Admin',
+      action: 'CREATE_PROMO',
+      target: promoCode.code,
+      fieldChanged: 'all',
+      oldValue: null,
+      newValue: promoCode,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+    })
+
+    await cache.clear()
+
+    res.status(201).json({ success: true, message: 'Promo code created successfully', promoCode })
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ success: false, message: 'Promo code already exists' })
+    }
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.updatePromoCode = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { code, discountType, discountValue, regionCode, countryCodes, maxUses, maxUsesPerSeller, startsAt, expiresAt, isActive } = req.body
+
+    const promo = await PromoCode.findById(id)
+    if (!promo) {
+      return res.status(404).json({ success: false, message: 'Promo code not found' })
+    }
+
+    if (isActive === true && !promo.isActive) {
+      // Check duplicate active
+      const duplicateActive = await PromoCode.findOne({ regionCode: regionCode || promo.regionCode, isActive: true, _id: { $ne: id } })
+      if (duplicateActive) {
+        return res.status(400).json({
+          success: false,
+          message: `There is already an active promo code (${duplicateActive.code}) for this region. Please disable it first.`
+        })
+      }
+    }
+
+    const auditLogs = []
+    const fields = ['code', 'discountType', 'discountValue', 'regionCode', 'maxUses', 'maxUsesPerSeller', 'startsAt', 'expiresAt', 'isActive']
+
+    fields.forEach(field => {
+      const formVal = req.body[field]
+      if (formVal !== undefined) {
+        const valStr = field === 'code' ? String(formVal).trim().toUpperCase() : String(formVal)
+        const promoStr = String(promo[field])
+        if (valStr !== promoStr) {
+          auditLogs.push({
+            adminId: req.admin._id,
+            adminName: req.admin.name || 'Admin',
+            action: 'UPDATE_PROMO',
+            target: promo.code,
+            fieldChanged: field,
+            oldValue: promo[field],
+            newValue: formVal,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+          })
+          
+          if (field === 'code') promo[field] = formVal.trim().toUpperCase()
+          else promo[field] = formVal
+        }
+      }
+    })
+
+    if (countryCodes !== undefined && JSON.stringify(countryCodes) !== JSON.stringify(promo.countryCodes)) {
+      auditLogs.push({
+        adminId: req.admin._id,
+        adminName: req.admin.name || 'Admin',
+        action: 'UPDATE_PROMO',
+        target: promo.code,
+        fieldChanged: 'countryCodes',
+        oldValue: promo.countryCodes,
+        newValue: countryCodes,
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+      })
+      promo.countryCodes = countryCodes
+    }
+
+    await promo.save()
+    if (auditLogs.length > 0) {
+      await PricingAuditLog.insertMany(auditLogs)
+    }
+
+    // Sync with rule
+    if (promo.isActive) {
+      await RegionalPricingRule.updateOne(
+        { regionCode: promo.regionCode },
+        { promoCodeId: promo._id }
+      )
+    } else {
+      await RegionalPricingRule.updateOne(
+        { regionCode: promo.regionCode, promoCodeId: promo._id },
+        { $unset: { promoCodeId: 1 } }
+      )
+    }
+
+    await cache.clear()
+
+    res.json({ success: true, message: 'Promo code updated successfully', promo })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+exports.deletePromoCode = async (req, res) => {
+  try {
+    const { id } = req.params
+    const promo = await PromoCode.findById(id)
+    if (!promo) {
+      return res.status(404).json({ success: false, message: 'Promo code not found' })
+    }
+
+    await RegionalPricingRule.updateOne(
+      { promoCodeId: promo._id },
+      { $unset: { promoCodeId: 1 } }
+    )
+
+    await PricingAuditLog.create({
+      adminId: req.admin._id,
+      adminName: req.admin.name || 'Admin',
+      action: 'DELETE_PROMO',
+      target: promo.code,
+      fieldChanged: 'all',
+      oldValue: promo,
+      newValue: null,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || ''
+    })
+
+    await PromoCode.findByIdAndDelete(id)
+
+    await cache.clear()
+
+    res.json({ success: true, message: 'Promo code deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// 4. Analytics
+exports.getSellerPricingAnalytics = async (req, res) => {
+  try {
+    // Total Sellers
+    const totalSellers = await Seller.countDocuments({ registrationFeePaid: true })
+
+    // Region Breakdown (We count from Paid SellerRegistrationOffers)
+    const offersByRegion = await SellerRegistrationOffer.aggregate([
+      { $match: { status: 'PAID' } },
+      {
+        $group: {
+          _id: '$regionCode',
+          count: { $sum: 1 },
+          revenue: { $sum: '$finalAmount' },
+          discounts: { $sum: '$discountAmount' }
+        }
+      }
+    ])
+
+    // Format results
+    const regions = {
+      HIGH_COST: { count: 0, revenue: 0, discounts: 0 },
+      MIDDLE_COST: { count: 0, revenue: 0, discounts: 0 },
+      LOW_COST: { count: 0, revenue: 0, discounts: 0 }
+    }
+
+    offersByRegion.forEach(item => {
+      if (regions[item._id]) {
+        regions[item._id] = {
+          count: item.count,
+          revenue: item.revenue,
+          discounts: item.discounts
+        }
+      }
+    })
+
+    // Promo code usage
+    const promoUsage = await PromoCode.find({}, 'code regionCode usedCount discountValue discountType').sort({ usedCount: -1 })
+
+    res.json({
+      success: true,
+      analytics: {
+        totalSellers,
+        regions,
+        promoUsage
+      }
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// 5. Audit logs
+exports.getPricingAuditLogs = async (req, res) => {
+  try {
+    const logs = await PricingAuditLog.find().sort({ createdAt: -1 }).limit(100)
+    res.json({ success: true, logs })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+
 
 
 
