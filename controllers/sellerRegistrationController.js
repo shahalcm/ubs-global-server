@@ -30,12 +30,24 @@ exports.getRegistrationOffer = async (req, res) => {
       })
     }
 
+    const cleanPhone = (phone) => (phone || '').replace(/[^0-9]/g, '')
+    const vipNumbers = ['919744367826', '917777777777']
+    const isVipFree = vipNumbers.includes(cleanPhone(req.user.phone))
+
     // 2. Check for an active, unexpired pending offer for this user
     let offer = await SellerRegistrationOffer.findOne({
       userId,
       status: 'PENDING',
       expiresAt: { $gt: new Date() }
     })
+
+    if (offer) {
+      const offerIsFree = offer.finalAmount === 0
+      if (offerIsFree !== isVipFree) {
+        await SellerRegistrationOffer.deleteOne({ _id: offer._id })
+        offer = null
+      }
+    }
 
     if (offer) {
       // Find active promo associated with the region to return transparency details
@@ -82,11 +94,15 @@ exports.getRegistrationOffer = async (req, res) => {
       }
     }
 
-    // 5. Find active regional pricing rule
     const rule = await RegionalPricingRule.findOne({ regionCode, isActive: true })
     const baseAmount = rule ? rule.baseAmount : 200
-    const discountType = rule ? rule.discountType : 'percentage'
-    const discountValue = rule ? rule.discountValue : 0
+    let discountType = rule ? rule.discountType : 'percentage'
+    let discountValue = rule ? rule.discountValue : 0
+
+    if (isVipFree) {
+      discountType = 'percentage'
+      discountValue = 100
+    }
 
     const discountAmount = discountType === 'percentage' 
       ? Number(((baseAmount * discountValue) / 100).toFixed(2))
@@ -94,7 +110,7 @@ exports.getRegistrationOffer = async (req, res) => {
     const finalAmount = Math.max(0, Number((baseAmount - discountAmount).toFixed(2)))
 
     // 6. Find if there is an active regional promo code configured
-    const activePromo = await PromoCode.findOne({ regionCode, isActive: true })
+    const activePromo = isVipFree ? { code: 'VIP_FREE' } : await PromoCode.findOne({ regionCode, isActive: true })
 
     // 7. Create a new temporary registration offer (lasts 30 minutes)
     offer = new SellerRegistrationOffer({

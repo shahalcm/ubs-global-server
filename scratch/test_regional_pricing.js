@@ -115,6 +115,25 @@ const runTests = async () => {
     recordResult('Low-cost country offer', test3, `Region: ${inOffer.region}, Fee: $${inOffer.finalAmount}, Promo code: ${inOffer.promo?.code}`)
 
     // ----------------------------------------------------
+    // TEST 3.5: VIP free phone number offer calculation
+    // ----------------------------------------------------
+    const vipUser = await User.create({
+      name: 'VIP Seller Test',
+      email: `${testEmailPrefix}vip@ubs-global.com`,
+      phone: '+919744367826',
+      countryCode: 'IN',
+      countryName: 'India',
+      role: 'buyer'
+    })
+    req = { user: vipUser, headers: {}, socket: { remoteAddress: '12.34.56.78' } }
+    res = mockResponse()
+    await getRegistrationOffer(req, res)
+    const vipOffer = res.body
+    
+    const testVip = vipOffer.success && vipOffer.finalAmount === 0 && vipOffer.promo.code === 'VIP_FREE'
+    recordResult('VIP Free phone number offer', testVip, `Fee: $${vipOffer.finalAmount}, Promo: ${vipOffer.promo?.code}`)
+
+    // ----------------------------------------------------
     // TEST 4: Validate Promo code regions (LOW_COST coupon on HIGH_COST user)
     // ----------------------------------------------------
     req = { user: usUser, body: { offerId: usOffer.offerId, code: 'UBSLOW60' } }
