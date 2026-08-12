@@ -52,7 +52,9 @@ exports.addProduct = async (req, res) => {
       fit,
       sleeve,
       neck,
-      refundPolicy
+      refundPolicy,
+      priceUnit,
+      stockUnit
     } = req.body
 
     const parseArrayField = (val) => {
@@ -181,6 +183,8 @@ exports.addProduct = async (req, res) => {
       sleeve: sleeve ? String(sleeve).trim() : undefined,
       neck: neck ? String(neck).trim() : undefined,
       refundPolicy: refundPolicy ? String(refundPolicy).trim() : undefined,
+      priceUnit: priceUnit ? String(priceUnit).trim() : undefined,
+      stockUnit: stockUnit ? String(stockUnit).trim() : 'pcs',
       status: 'active',
       approvalStatus
     })
@@ -540,7 +544,9 @@ exports.updateProduct = async (req, res) => {
       fit,
       sleeve,
       neck,
-      refundPolicy
+      refundPolicy,
+      priceUnit,
+      stockUnit
     } = req.body
 
     const parseArrayField = (val) => {
@@ -606,6 +612,8 @@ exports.updateProduct = async (req, res) => {
     if (sleeve !== undefined) product.sleeve = String(sleeve).trim()
     if (neck !== undefined) product.neck = String(neck).trim()
     if (refundPolicy !== undefined) product.refundPolicy = String(refundPolicy).trim()
+    if (priceUnit !== undefined) product.priceUnit = String(priceUnit).trim()
+    if (stockUnit !== undefined) product.stockUnit = String(stockUnit).trim()
 
     // Handle uploaded images if any
     if (req.files && req.files.length > 0) {

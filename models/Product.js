@@ -39,6 +39,11 @@ const productSchema = new mongoose.Schema({
     required: true,
     default: 0
   },
+  stockUnit: {
+    type: String,
+    trim: true,
+    default: 'pcs'
+  },
   lowStockAlert: {
     type: Number,
     default: 10
@@ -95,6 +100,11 @@ const productSchema = new mongoose.Schema({
   sleeve: String,
   neck: String,
   refundPolicy: String,
+  priceUnit: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   specifications: [{
     key: String,
     value: String
