@@ -77,9 +77,17 @@ const socketHandler = (io) => {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token
     if (token) {
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET)
+        let decoded
+        try {
+          decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET)
+        } catch (e) {
+          decoded = jwt.verify(token, process.env.JWT_SECRET)
+        }
         socket.user = decoded
         socket.userId = decoded.id || decoded._id || decoded.userId
+        if (decoded.role === 'admin') {
+          socket.isAdmin = true
+        }
       } catch (err) {
         console.warn(`[Socket Auth Warning] Invalid token: ${err.message}`)
       }
