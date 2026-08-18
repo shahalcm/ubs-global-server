@@ -1,57 +1,56 @@
-const Call = require('../models/Call')
+const CallHistory = require('../models/CallHistory')
 const User = require('../models/User')
 const Seller = require('../models/Seller')
 const crypto = require('crypto')
 
-// Initiate a call record
+// Initiate call
 exports.initiateCall = async (req, res) => {
   try {
-    const { receiverId } = req.body
-    const callerId = req.user._id
+    const { receiverId, receiverType = 'user' } = req.body
+    const callerId = req.user?._id || req.admin?._id || req.body.callerId
+    const callerType = req.admin ? 'admin' : (req.user?.role || 'user')
 
     if (!receiverId) {
       return res.status(400).json({ success: false, message: 'Receiver ID is required' })
     }
 
-    // Resolve receiver's User ID (if receiverId is a Seller ID instead of User ID)
     let targetUserId = receiverId
-    const seller = await Seller.findById(receiverId)
-    if (seller) {
-      targetUserId = seller.userId
+    let targetName = 'User'
+    let targetAvatar = ''
+
+    if (receiverType === 'seller') {
+      const seller = await Seller.findById(receiverId).populate('userId')
+      if (seller && seller.userId) {
+        targetUserId = seller.userId._id
+        targetName = seller.storeName || seller.userId.name
+        targetAvatar = seller.logo || seller.userId.avatar
+      }
+    } else if (receiverType === 'user') {
+      const receiverUser = await User.findById(receiverId)
+      if (receiverUser) {
+        targetName = receiverUser.name
+        targetAvatar = receiverUser.avatar
+      }
     }
 
-    // Verify receiver exists in User database
-    const receiverUser = await User.findById(targetUserId)
-    if (!receiverUser) {
-      return res.status(404).json({ success: false, message: 'Receiver user not found' })
-    }
-
-    // Generate unique channelId/room name for WebRTC session
     const channelId = `call_${crypto.randomBytes(8).toString('hex')}`
 
-    const newCall = await Call.create({
+    const newCall = await CallHistory.create({
       callerId,
+      callerName: req.user?.name || req.admin?.name || 'Caller',
+      callerAvatar: req.user?.avatar || '',
+      callerType,
       receiverId: targetUserId,
+      receiverName: targetName,
+      receiverAvatar: targetAvatar,
+      receiverType,
       status: 'ringing',
       channelId
     })
 
     res.status(201).json({
       success: true,
-      call: {
-        _id: newCall._id,
-        channelId: newCall.channelId,
-        status: newCall.status,
-        callerId: newCall.callerId,
-        receiverId: newCall.receiverId,
-        createdAt: newCall.createdAt
-      },
-      receiver: {
-        _id: receiverUser._id,
-        name: receiverUser.name,
-        avatar: receiverUser.avatar,
-        role: receiverUser.role
-      }
+      call: newCall
     })
   } catch (error) {
     console.error('Initiate call error:', error)
@@ -59,68 +58,127 @@ exports.initiateCall = async (req, res) => {
   }
 }
 
-// Update call status
+// Get paginated call history (for Admin & User)
+exports.getCallHistory = async (req, res) => {
+  try {
+    const { search, status, callerType, receiverType, startDate, endDate, page = 1, limit = 50 } = req.query
+    let query = {}
+
+    // User access restriction (non-admin can only view their own calls)
+    if (req.user && !req.admin) {
+      query.$or = [
+        { callerId: req.user._id },
+        { receiverId: req.user._id }
+      ]
+    }
+
+    if (status) {
+      query.status = status
+    }
+
+    if (callerType) {
+      query.callerType = callerType
+    }
+
+    if (receiverType) {
+      query.receiverType = receiverType
+    }
+
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = new Date(startDate)
+      if (endDate) query.createdAt.$lte = new Date(endDate)
+    }
+
+    if (search) {
+      const searchRegex = new RegExp(search, 'i')
+      query.$or = [
+        { callerName: searchRegex },
+        { receiverName: searchRegex }
+      ]
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit)
+    const calls = await CallHistory.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+
+    const total = await CallHistory.countDocuments(query)
+
+    res.json({
+      success: true,
+      calls,
+      pagination: {
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    })
+  } catch (error) {
+    console.error('Get call history error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Get active ongoing calls for admin monitoring
+exports.getActiveCalls = async (req, res) => {
+  try {
+    const activeCalls = await CallHistory.find({
+      status: { $in: ['ringing', 'accepted'] }
+    }).sort({ createdAt: -1 })
+
+    res.json({ success: true, calls: activeCalls })
+  } catch (error) {
+    console.error('Get active calls error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Register Expo Push Token for mobile users
+exports.registerPushToken = async (req, res) => {
+  try {
+    const { pushToken } = req.body
+    if (!pushToken) {
+      return res.status(400).json({ success: false, message: 'Push token is required' })
+    }
+
+    if (req.user) {
+      await User.findByIdAndUpdate(req.user._id, { expoPushToken: pushToken })
+    }
+
+    res.json({ success: true, message: 'Expo push token registered successfully' })
+  } catch (error) {
+    console.error('Register push token error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Update call status directly
 exports.updateCallStatus = async (req, res) => {
   try {
     const { callId } = req.params
     const { status } = req.body
 
-    const allowedStatuses = ['ringing', 'accepted', 'rejected', 'ended', 'missed']
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid call status' })
-    }
-
-    const call = await Call.findById(callId)
+    const call = await CallHistory.findById(callId)
     if (!call) {
-      return res.status(404).json({ success: false, message: 'Call record not found' })
-    }
-
-    // Verify authorization: caller or receiver must belong to the call
-    if (call.callerId.toString() !== req.user._id.toString() && call.receiverId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Unauthorized access to call' })
+      return res.status(404).json({ success: false, message: 'Call not found' })
     }
 
     call.status = status
-
     if (status === 'accepted') {
-      call.startTime = new Date()
-    } else if (status === 'ended') {
+      call.answeredAt = new Date()
+    } else if (['completed', 'ended', 'rejected', 'cancelled', 'missed'].includes(status)) {
       call.endTime = new Date()
-      if (call.startTime) {
-        call.duration = Math.round((call.endTime - call.startTime) / 1000)
+      if (call.answeredAt) {
+        call.duration = Math.round((call.endTime - call.answeredAt) / 1000)
       }
-    } else if (status === 'rejected' || status === 'missed') {
-      call.endTime = new Date()
     }
-
     await call.save()
 
     res.json({ success: true, call })
   } catch (error) {
     console.error('Update call status error:', error)
-    res.status(500).json({ success: false, message: error.message })
-  }
-}
-
-// Get user call logs history
-exports.getCallHistory = async (req, res) => {
-  try {
-    const userId = req.user._id
-
-    const calls = await Call.find({
-      $or: [
-        { callerId: userId },
-        { receiverId: userId }
-      ]
-    })
-      .populate('callerId', 'name avatar role')
-      .populate('receiverId', 'name avatar role')
-      .sort({ createdAt: -1 })
-      .limit(50)
-
-    res.json({ success: true, calls })
-  } catch (error) {
-    console.error('Get call history error:', error)
     res.status(500).json({ success: false, message: error.message })
   }
 }

@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema({
   isVerified: { type: Boolean, default: false },
   isBlocked: { type: Boolean, default: false },
   fcmToken: String,
+  expoPushToken: String,
   language: { type: String, default: 'en' },
   countryCode: { type: String, default: 'IN' },
   countryName: { type: String, default: 'India' },
