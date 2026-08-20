@@ -108,7 +108,18 @@ const productSchema = new mongoose.Schema({
   specifications: [{
     key: String,
     value: String
-  }]
+  }],
+  translations: {
+    type: Map,
+    of: {
+      title: String,
+      description: String,
+      categoryName: String,
+      warranty: String,
+      brand: String
+    },
+    default: {}
+  }
 }, { timestamps: true })
 
 productSchema.index({ title: 'text', description: 'text' })

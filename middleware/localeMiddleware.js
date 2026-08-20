@@ -1,9 +1,30 @@
+const fs = require('fs')
+const path = require('path')
+
 const RTL_LANGUAGES = ['ar', 'ur', 'fa', 'he']
 const SUPPORTED_LANGUAGES = [
   'en', 'ar', 'hi', 'ml', 'fr', 'es', 'de', 'zh', 'ja', 'ur', 'tr', 'ru',
   'ko', 'pt', 'it', 'nl', 'bn', 'ta', 'te', 'kn', 'mr', 'gu', 'pa', 'id',
   'th', 'vi', 'pl', 'sv', 'no', 'da', 'fi', 'el', 'he', 'fa'
 ]
+
+// Cache loaded translation dictionaries
+const dictionaryCache = {}
+
+const loadDictionary = (lang) => {
+  if (dictionaryCache[lang]) return dictionaryCache[lang]
+  try {
+    const dictPath = path.join(__dirname, '..', '..', 'client', 'i18n', `${lang}.json`)
+    if (fs.existsSync(dictPath)) {
+      const data = JSON.parse(fs.readFileSync(dictPath, 'utf8'))
+      dictionaryCache[lang] = data
+      return data
+    }
+  } catch (e) {
+    console.error(`Failed to load dictionary for ${lang}:`, e.message)
+  }
+  return {}
+}
 
 const localeMiddleware = (req, res, next) => {
   try {
@@ -25,9 +46,18 @@ const localeMiddleware = (req, res, next) => {
 
     req.language = lang
     req.isRTL = RTL_LANGUAGES.includes(lang)
+
+    // Translation helper for backend controllers
+    req.t = (key, fallback) => {
+      if (!key) return fallback || ''
+      if (req.language === 'en') return key
+      const dict = loadDictionary(req.language)
+      return dict[key] || fallback || key
+    }
   } catch (error) {
     req.language = 'en'
     req.isRTL = false
+    req.t = (key, fallback) => key || fallback || ''
   }
 
   next()
