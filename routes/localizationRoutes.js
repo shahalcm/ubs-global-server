@@ -1,12 +1,12 @@
 const express = require('express')
 const router = express.Router()
 const localizationController = require('../controllers/localizationController')
-const { protect, admin } = require('../middleware/auth')
+const { adminProtect } = require('../middleware/adminAuth')
 
 router.get('/languages', localizationController.getLanguages)
-router.put('/languages/:code', protect, admin, localizationController.toggleLanguage)
-router.get('/progress', protect, admin, localizationController.getProgress)
-router.get('/missing', protect, admin, localizationController.getMissingReport)
-router.get('/analytics', protect, admin, localizationController.getAnalytics)
+router.put('/languages/:code', adminProtect, localizationController.toggleLanguage)
+router.get('/progress', adminProtect, localizationController.getProgress)
+router.get('/missing', adminProtect, localizationController.getMissingReport)
+router.get('/analytics', adminProtect, localizationController.getAnalytics)
 
 module.exports = router
