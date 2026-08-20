@@ -147,7 +147,12 @@ const currencyMiddleware = require('./middleware/currencyMiddleware')
 const currencyService = require('./services/currencyService')
 app.use(currencyMiddleware)
 
+// Locale Middleware
+const localeMiddleware = require('./middleware/localeMiddleware')
+app.use(localeMiddleware)
+
 app.use('/api/currency', require('./routes/currency'))
+app.use('/api/localization', require('./routes/localizationRoutes'))
 
 // Routes
 app.use('/api/auth', require('./routes/auth'))
