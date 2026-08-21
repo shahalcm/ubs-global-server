@@ -153,3 +153,23 @@ exports.getAnalytics = async (req, res) => {
     res.status(500).json({ success: false, message: error.message })
   }
 }
+
+const { generateMultilingualFields } = require('../utils/autoTranslator')
+
+exports.autoTranslateContent = async (req, res) => {
+  try {
+    const { fields } = req.body
+    if (!fields || typeof fields !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid fields payload' })
+    }
+
+    const translations = await generateMultilingualFields(fields)
+    res.json({
+      success: true,
+      translations
+    })
+  } catch (error) {
+    console.error('Auto translate content error:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}

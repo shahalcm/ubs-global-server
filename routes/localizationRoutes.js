@@ -8,5 +8,6 @@ router.put('/languages/:code', adminProtect, localizationController.toggleLangua
 router.get('/progress', adminProtect, localizationController.getProgress)
 router.get('/missing', adminProtect, localizationController.getMissingReport)
 router.get('/analytics', adminProtect, localizationController.getAnalytics)
+router.post('/auto-translate', adminProtect, localizationController.autoTranslateContent)
 
 module.exports = router

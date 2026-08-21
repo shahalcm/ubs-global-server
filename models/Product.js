@@ -109,14 +109,29 @@ const productSchema = new mongoose.Schema({
     key: String,
     value: String
   }],
+  shortDescription: String,
+  features: [String],
+  benefits: [String],
+  seoTitle: String,
+  seoDescription: String,
+  brandDescription: String,
   translations: {
     type: Map,
     of: {
       title: String,
+      shortDescription: String,
       description: String,
       categoryName: String,
+      subcategoryName: String,
       warranty: String,
-      brand: String
+      brand: String,
+      brandDescription: String,
+      features: [String],
+      benefits: [String],
+      tags: [String],
+      seoTitle: String,
+      seoDescription: String,
+      specifications: [{ key: String, value: String }]
     },
     default: {}
   }

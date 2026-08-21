@@ -22,6 +22,40 @@ const getFileUrl = (req, file) => {
   }
 };
 
+const mapProductLanguage = (product, lang) => {
+  if (!product) return product;
+  if (!lang || lang === 'en') return product;
+
+  let trans = null;
+  if (product.translations) {
+    if (typeof product.translations.get === 'function') {
+      trans = product.translations.get(lang);
+    } else if (typeof product.translations === 'object') {
+      trans = product.translations[lang];
+    }
+  }
+
+  if (trans) {
+    return {
+      ...product,
+      title: trans.title || product.title,
+      shortDescription: trans.shortDescription || product.shortDescription,
+      description: trans.description || product.description,
+      brand: trans.brand || product.brand,
+      brandDescription: trans.brandDescription || product.brandDescription,
+      warranty: trans.warranty || product.warranty,
+      features: trans.features || product.features,
+      benefits: trans.benefits || product.benefits,
+      tags: trans.tags || product.tags,
+      seoTitle: trans.seoTitle || product.seoTitle,
+      seoDescription: trans.seoDescription || product.seoDescription,
+      specifications: trans.specifications || product.specifications
+    };
+  }
+
+  return product;
+};
+
 exports.addProduct = async (req, res) => {
   try {
     const {
@@ -285,9 +319,13 @@ exports.getProducts = async (req, res) => {
     }
     if (rating) query.rating = { $gte: Number(rating) }
     if (search) {
+      const userLang = req.language || 'en';
       query.$or = [
         { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { description: { $regex: search, $options: 'i' } },
+        { tags: { $regex: search, $options: 'i' } },
+        { [`translations.${userLang}.title`]: { $regex: search, $options: 'i' } },
+        { [`translations.${userLang}.description`]: { $regex: search, $options: 'i' } }
       ]
     }
 
@@ -357,9 +395,11 @@ exports.getProducts = async (req, res) => {
       }
     }
 
+    const localizedProducts = products.map(p => mapProductLanguage(p, req.language))
+
     res.json({
       success: true,
-      products,
+      products: localizedProducts,
       isRelated,
       pagination: {
         page: Number(page),
@@ -405,10 +445,13 @@ exports.getProduct = async (req, res) => {
         .select('title images price rating totalReviews')
     }
 
+    const localizedProduct = mapProductLanguage(product.toObject ? product.toObject() : product, req.language)
+    const localizedSellerProducts = (sellerProducts || []).map(p => mapProductLanguage(p.toObject ? p.toObject() : p, req.language))
+
     res.json({
       success: true,
-      product,
-      sellerProducts
+      product: localizedProduct,
+      sellerProducts: localizedSellerProducts
     })
   } catch (error) {
     res.status(500).json({

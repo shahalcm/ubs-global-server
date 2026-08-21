@@ -11,7 +11,22 @@ const categorySchema = new mongoose.Schema({
     default: null
   },
   sortOrder: { type: Number, default: 0 },
-  isActive: { type: Boolean, default: true },
-  productCount: { type: Number, default: 0 },
+  subcategories: [{
+    name: String,
+    slug: String,
+    translations: {
+      type: Map,
+      of: String,
+      default: {}
+    }
+  }],
+  translations: {
+    type: Map,
+    of: {
+      name: String,
+      description: String
+    },
+    default: {}
+  }
 }, { timestamps: true })
 module.exports = mongoose.model('Category', categorySchema)
