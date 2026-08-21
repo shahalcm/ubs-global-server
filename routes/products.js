@@ -13,16 +13,6 @@ const {
   deleteProduct,
   getMyProducts,
   getSellerPublicProducts,
-const {
-  getProducts,
-  getProduct,
-  getProductsByCategory,
-  searchProducts,
-  addProduct,
-  updateProduct,
-  deleteProduct,
-  getMyProducts,
-  getSellerPublicProducts,
   startProductChat,
   translateProduct
 } = require('../controllers/productController')
