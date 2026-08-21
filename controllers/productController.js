@@ -905,3 +905,63 @@ exports.startProductChat = async (req, res) => {
     })
   }
 }
+
+const { translateText } = require('../utils/autoTranslator')
+
+exports.translateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { targetLang } = req.body;
+    const lang = targetLang || req.language || 'en';
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product ID' });
+    }
+
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    if (!product.translations) {
+      product.translations = new Map();
+    }
+
+    let existingTrans = product.translations.get(lang);
+    if (existingTrans && existingTrans.title) {
+      return res.json({
+        success: true,
+        cached: true,
+        translation: existingTrans,
+        product
+      });
+    }
+
+    const translatedTitle = await translateText(product.title, lang);
+    const translatedShortDesc = await translateText(product.shortDescription || '', lang);
+    const translatedDesc = await translateText(product.description || '', lang);
+    const translatedBrand = await translateText(product.brand || '', lang);
+    const translatedWarranty = await translateText(product.warranty || '', lang);
+
+    const translatedObj = {
+      title: translatedTitle,
+      shortDescription: translatedShortDesc,
+      description: translatedDesc,
+      brand: translatedBrand,
+      warranty: translatedWarranty
+    };
+
+    product.translations.set(lang, translatedObj);
+    await product.save();
+
+    res.json({
+      success: true,
+      cached: false,
+      translation: translatedObj,
+      product
+    });
+  } catch (error) {
+    console.error('Translate product error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+}

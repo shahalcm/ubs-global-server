@@ -13,7 +13,18 @@ const {
   deleteProduct,
   getMyProducts,
   getSellerPublicProducts,
-  startProductChat
+const {
+  getProducts,
+  getProduct,
+  getProductsByCategory,
+  searchProducts,
+  addProduct,
+  updateProduct,
+  deleteProduct,
+  getMyProducts,
+  getSellerPublicProducts,
+  startProductChat,
+  translateProduct
 } = require('../controllers/productController')
 
 // Seller routes
@@ -31,6 +42,7 @@ router.get('/category/:categoryId', getProductsByCategory)
 router.get('/seller/:sellerId', getSellerPublicProducts)
 router.get('/:id', getProduct)
 router.post('/:id/chat', protect, startProductChat)
+router.post('/:id/translate', translateProduct)
 
 router.post(
   '/',

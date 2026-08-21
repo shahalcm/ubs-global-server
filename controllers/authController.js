@@ -2,37 +2,56 @@ const User = require('../models/User')
 const bcrypt = require('bcryptjs')
 const { generateUserToken, generateAdminToken } = require('../utils/generateToken')
 const { sendOTP, verifyOTP } = require('../utils/sendOTP')
+const { validateAndNormalizePhone } = require('../utils/phoneValidator')
 
 // Send OTP
 exports.sendOTP = async (req, res) => {
   const { phone } = req.body
-  const otp = await sendOTP(phone)
+  const normalized = validateAndNormalizePhone(phone)
+  const targetPhone = normalized.isValid ? normalized.fullPhoneNumber : (phone || '').trim()
+
+  const otp = await sendOTP(targetPhone)
   if (process.env.NODE_ENV === 'development') {
-    res.json({ success: true, message: 'OTP sent', otp })
+    res.json({ success: true, message: 'OTP sent', otp, fullPhoneNumber: targetPhone })
   } else {
-    res.json({ success: true, message: 'OTP sent' })
+    res.json({ success: true, message: 'OTP sent', fullPhoneNumber: targetPhone })
   }
 }
 
 // Verify OTP
 exports.verifyOTP = async (req, res) => {
   const { phone, otp } = req.body
-  const isValid = await verifyOTP(phone, otp)
+  const normalized = validateAndNormalizePhone(phone)
+  const targetPhone = normalized.isValid ? normalized.fullPhoneNumber : (phone || '').trim()
+
+  const isValid = await verifyOTP(targetPhone, otp)
   if (!isValid) {
     return res.status(400).json({
       success: false,
       message: 'Invalid or expired OTP'
     })
   }
-  res.json({ success: true, message: 'OTP verified' })
+  res.json({ success: true, message: 'OTP verified', fullPhoneNumber: targetPhone })
 }
 
 // Complete signup
 exports.signup = async (req, res) => {
   const { name, email, password, phone, location } = req.body
+  const normalized = validateAndNormalizePhone(phone)
+  const targetPhone = normalized.isValid ? normalized.fullPhoneNumber : (phone || '').trim()
+
   const hashedPassword = await bcrypt.hash(password, 12)
   const user = await User.create({
-    name, email, phone,
+    name,
+    email,
+    phone: targetPhone,
+    fullPhoneNumber: targetPhone,
+    phoneCountryCode: normalized.phoneCountryCode || '+91',
+    phoneNumber: normalized.phoneNumber || targetPhone,
+    country: normalized.countryName || 'India',
+    countryCode: normalized.countryCode || 'IN',
+    countryFlag: normalized.countryFlag || '🇮🇳',
+    preferredLanguage: normalized.preferredLanguage || 'en',
     password: hashedPassword,
     isVerified: true,
     location
@@ -47,11 +66,14 @@ exports.login = async (req, res) => {
     const { phone, email, password, otp } = req.body
 
     let query = {}
-    const cleanPhone = phone ? phone.trim().replace(/\s+/g, '') : null
+    const normalized = phone ? validateAndNormalizePhone(phone) : null
+    const cleanPhone = normalized?.isValid ? normalized.fullPhoneNumber : (phone ? phone.trim().replace(/\s+/g, '') : null)
     const cleanEmail = email ? email.trim().toLowerCase() : null
 
-    if (cleanPhone) query.phone = { $in: [cleanPhone, phone.trim()] }
-    else if (cleanEmail) query.email = cleanEmail
+    if (cleanPhone) {
+      const altPhone = cleanPhone.startsWith('+') ? cleanPhone.substring(1) : `+${cleanPhone}`
+      query.phone = { $in: [cleanPhone, altPhone, phone.trim()] }
+    } else if (cleanEmail) query.email = cleanEmail
     else {
       return res.status(400).json({ success: false, message: 'Phone number or email is required' })
     }

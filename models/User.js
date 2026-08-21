@@ -8,6 +8,10 @@ const userSchema = new mongoose.Schema({
     lowercase: true
   },
   phone: { type: String, unique: true, sparse: true },
+  fullPhoneNumber: { type: String, unique: true, sparse: true },
+  phoneCountryCode: { type: String, default: '+91' },
+  phoneNumber: { type: String, trim: true },
+  countryFlag: { type: String, default: '🇮🇳' },
   password: { type: String, select: false },
   googleId: String,
   avatar: {
