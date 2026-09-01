@@ -26,7 +26,9 @@ const server = http.createServer(app)
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.ADMIN_URL,
+  process.env.CRM_FRONTEND_URL,
   'http://localhost:3000',
+  'http://localhost:3001',
   'http://localhost:8081',
   'http://localhost:5173',
   'http://127.0.0.1:8081',
@@ -172,6 +174,7 @@ app.use('/api/notifications', require('./routes/notifications'))
 app.use('/api/reviews', require('./routes/reviews'))
 app.use('/api/banners', require('./routes/banners'))
 app.use('/api/admin', require('./routes/admin'))
+app.use('/api/crm', require('./routes/crm'))
 app.use('/api/public-settings', require('./routes/publicSettings'))
 app.use('/api/support-calls', require('./routes/supportCallRoutes'))
 app.use('/api/job-applications', require('./routes/jobApplications'))
