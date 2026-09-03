@@ -23,6 +23,12 @@ router.get('/recently-viewed', protect, userController.getRecentlyViewed)
 router.post('/recently-viewed', protect, userController.addRecentlyViewed)
 router.delete('/recently-viewed', protect, userController.clearRecentlyViewed)
 
+// Wishlist routes (alias compatibility)
+const wishlistController = require('../controllers/wishlistController')
+router.get('/wishlist', protect, wishlistController.getWishlist)
+router.post('/wishlist/:productId', protect, wishlistController.toggleWishlist)
+router.delete('/wishlist/:productId', protect, wishlistController.toggleWishlist)
+
 // Public legal doc routes
 router.get('/legal-docs/:key', userController.getLegalDoc)
 

@@ -5,5 +5,7 @@ const { getWishlist, toggleWishlist } = require('../controllers/wishlistControll
 
 router.get('/', protect, getWishlist)
 router.post('/toggle/:productId', protect, toggleWishlist)
+router.post('/:productId', protect, toggleWishlist)
+router.delete('/:productId', protect, toggleWishlist)
 
 module.exports = router

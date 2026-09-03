@@ -6,7 +6,7 @@ exports.getWishlist = async (req, res) => {
       buyerId: req.user._id
     }).populate({
       path: 'products.productId',
-      select: 'title images price rating stock',
+      select: 'title images price rating stock category',
       populate: {
         path: 'sellerId',
         select: 'shopName isVerified'
@@ -15,11 +15,15 @@ exports.getWishlist = async (req, res) => {
 
     if (!wishlist) {
       wishlist = { products: [] }
+    } else if (wishlist.products) {
+      // Filter out any products that were deleted
+      wishlist.products = wishlist.products.filter(p => p && p.productId)
     }
 
     res.json({
       success: true,
-      products: wishlist.products
+      products: wishlist.products,
+      wishlist: wishlist.products
     })
   } catch (error) {
     res.status(500).json({
