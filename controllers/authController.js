@@ -137,7 +137,23 @@ exports.login = async (req, res) => {
 
     user.password = undefined
 
-    res.json({ success: true, token, user })
+    // Check if user has an associated seller profile
+    const Seller = require('../models/Seller')
+    const seller = await Seller.findOne({ userId: user._id })
+    const isSeller = user.role === 'seller' || Boolean(seller)
+    if (isSeller && user.role !== 'seller') {
+      user.role = 'seller'
+      await user.save()
+    }
+
+    res.json({
+      success: true,
+      token,
+      user,
+      isSeller,
+      role: isSeller ? 'seller' : (user.role || 'buyer'),
+      sellerId: seller?._id
+    })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -295,5 +311,40 @@ exports.setRole = async (req, res) => {
       success: false,
       message: error.message
     })
+  }
+}
+
+// Check if phone number is registered & if it has a seller profile
+exports.checkPhone = async (req, res) => {
+  try {
+    const { phone } = req.body
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' })
+    }
+    const normalized = validateAndNormalizePhone(phone)
+    const cleanPhone = normalized?.isValid ? normalized.fullPhoneNumber : (phone || '').trim().replace(/\s+/g, '')
+    const altPhone = cleanPhone.startsWith('+') ? cleanPhone.substring(1) : `+${cleanPhone}`
+
+    const user = await User.findOne({
+      phone: { $in: [cleanPhone, altPhone, phone.trim()] }
+    })
+
+    if (!user) {
+      return res.json({ success: true, exists: false })
+    }
+
+    const Seller = require('../models/Seller')
+    const seller = await Seller.findOne({ userId: user._id })
+    const isSeller = user.role === 'seller' || Boolean(seller)
+
+    return res.json({
+      success: true,
+      exists: true,
+      isSeller,
+      role: isSeller ? 'seller' : (user.role || 'buyer'),
+      name: user.name
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
   }
 }
