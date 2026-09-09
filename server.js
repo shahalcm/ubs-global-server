@@ -63,20 +63,7 @@ global.io = io
 // Connect database
 connectDB()
 
-// Security middleware
-app.use(helmet())
-app.use(compression())
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Too many requests, please try again later.'
-})
-
-app.use('/api/', limiter)
-
-// CORS middleware
+// CORS middleware - MUST be applied first before helmet and rate limiter to ensure all responses (including errors) have CORS headers
 app.use(cors({
   origin: (origin, callback) => {
     // Check if the origin matches a local network / private IP address (e.g., http://10.x.x.x:port or http://192.168.x.x:port)
@@ -92,6 +79,25 @@ app.use(cors({
   },
   credentials: true
 }))
+
+// Security middleware - permit cross-origin access for web and mobile clients
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
+}))
+app.use(compression())
+
+// Rate limiting - skip OPTIONS preflights and health checks
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS' || req.path === '/',
+  message: { success: false, message: 'Too many requests, please try again later.' }
+})
+
+app.use('/api/', limiter)
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }))

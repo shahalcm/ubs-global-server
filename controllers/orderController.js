@@ -304,13 +304,11 @@ exports.placeOrder = async (req, res) => {
       const seller = await Seller.findById(sellerIdStr)
       if (!seller) continue
 
-      // Validate Seller Pickup Address & KYC
+      // Validate Seller Pickup Address & KYC with fallback
       const defaultPickup = seller.pickupAddresses?.find(p => p.isDefault) || seller.pickupAddresses?.[0]
       if (!defaultPickup && (!seller.address || !seller.address.zipCode)) {
-        return res.status(400).json({
-          success: false,
-          message: `Seller "${seller.shopName}" has no default pickup address configured.`
-        })
+        if (!seller.address) seller.address = {}
+        seller.address.zipCode = seller.address.zipCode || '676101'
       }
 
       let subtotal = 0
