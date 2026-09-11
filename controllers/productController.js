@@ -279,28 +279,61 @@ exports.getProducts = async (req, res) => {
 
     if (category) {
       if (mongoose.Types.ObjectId.isValid(category)) {
-        query.category = category
+        if (String(category) === '6a102048ff7058790d5fb558' || String(category) === '686f6d652d6b69746368656e') {
+          query.category = {
+            $in: [
+              new mongoose.Types.ObjectId('6a102048ff7058790d5fb558'),
+              new mongoose.Types.ObjectId('686f6d652d6b69746368656e')
+            ]
+          }
+        } else {
+          query.category = new mongoose.Types.ObjectId(category)
+        }
       } else {
-        const categoryDoc = await Category.findOne({
+        const cleanCat = String(category).trim()
+        const cleanSlug = cleanCat.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+
+        let categoryDoc = await Category.findOne({
           $or: [
-            { slug: category.toLowerCase() },
-            { name: { $regex: new RegExp(`^${category}$`, 'i') } }
+            { slug: cleanSlug },
+            { slug: cleanCat.toLowerCase() },
+            { name: { $regex: new RegExp(`^${cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
           ]
         })
+
+        // If not found by exact name/slug, try word/alias matching
+        if (!categoryDoc) {
+          const words = cleanCat.split(/[\s&/,-]+/).filter(w => w.length > 2)
+          for (const word of words) {
+            const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            categoryDoc = await Category.findOne({
+              $or: [
+                { name: { $regex: new RegExp(escapedWord, 'i') } },
+                { slug: { $regex: new RegExp(escapedWord.toLowerCase(), 'i') } }
+              ]
+            })
+            if (categoryDoc) break
+          }
+        }
+
         if (categoryDoc) {
-          query.category = categoryDoc._id
-        } else {
-          // If the category does not exist, return an empty array with success
-          return res.json({
-            success: true,
-            products: [],
-            pagination: {
-              page: Number(page),
-              pages: 0,
-              total: 0,
-              hasMore: false
+          if (String(categoryDoc.slug) === 'home-kitchen' || String(categoryDoc._id) === '6a102048ff7058790d5fb558') {
+            query.category = {
+              $in: [
+                categoryDoc._id,
+                new mongoose.Types.ObjectId('686f6d652d6b69746368656e')
+              ]
             }
-          })
+          } else {
+            query.category = categoryDoc._id
+          }
+        } else {
+          // If no category doc matched, query by tags, title, or subcategory
+          query.$or = [
+            { tags: { $regex: cleanCat, $options: 'i' } },
+            { title: { $regex: cleanCat, $options: 'i' } },
+            { subcategory: { $regex: cleanCat, $options: 'i' } }
+          ]
         }
       }
     } else {
