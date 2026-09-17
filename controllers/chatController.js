@@ -53,6 +53,7 @@ exports.getMessages = async (req, res) => {
     }
 
     const room = await ChatRoom.findById(roomId)
+      .populate('productId', 'title images price description category unit stock sellerId')
     if (!room) {
       return res.status(404).json({ success: false, message: 'Chat room not found' })
     }

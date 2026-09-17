@@ -142,6 +142,59 @@ module.exports = (io) => {
       socket.to(data.roomId).emit('userStopTyping', data)
     })
 
+    // DIRECT ENQUIRY SOCKET EVENTS (Strictly Buyer <-> Admin ONLY, never Seller)
+    socket.on('direct-enquiry:join', async (data) => {
+      const { enquiryId, userId, isAdmin } = data || {}
+      if (!enquiryId) return
+
+      try {
+        const DirectEnquiry = require('../models/DirectEnquiry')
+        const enquiry = await DirectEnquiry.findById(enquiryId)
+        if (!enquiry) {
+          return socket.emit('direct-enquiry:error', { message: 'Enquiry not found' })
+        }
+
+        // Verify authorization: must be admin OR enquiry's buyer
+        const isBuyer = userId && enquiry.buyerId.toString() === userId.toString()
+        const authorized = isAdmin || isBuyer || (socket.rooms && socket.rooms.has('admin-room'))
+
+        if (!authorized) {
+          console.warn(`[Socket Security] Unauthorized attempt to join enquiry ${enquiryId} by user ${userId}`)
+          return socket.emit('direct-enquiry:error', { message: 'Access denied to direct enquiry' })
+        }
+
+        const roomName = `direct-enquiry:${enquiryId}`
+        socket.join(roomName)
+        console.log(`Socket ${socket.id} joined direct enquiry room ${roomName} (${isAdmin ? 'Admin' : 'Buyer'})`)
+      } catch (err) {
+        console.error('direct-enquiry:join error:', err)
+      }
+    })
+
+    socket.on('direct-enquiry:leave', (data) => {
+      const { enquiryId } = data || {}
+      if (enquiryId) {
+        socket.leave(`direct-enquiry:${enquiryId}`)
+      }
+    })
+
+    socket.on('direct-enquiry:typing', (data) => {
+      const { enquiryId, senderName, senderType } = data || {}
+      if (enquiryId) {
+        socket.to(`direct-enquiry:${enquiryId}`).emit('direct-enquiry:userTyping', {
+          senderName,
+          senderType
+        })
+      }
+    })
+
+    socket.on('direct-enquiry:stopTyping', (data) => {
+      const { enquiryId } = data || {}
+      if (enquiryId) {
+        socket.to(`direct-enquiry:${enquiryId}`).emit('direct-enquiry:userStopTyping')
+      }
+    })
+
     socket.on('disconnect', () => {
       console.log('🔌 Socket disconnected:', socket.id)
     })
