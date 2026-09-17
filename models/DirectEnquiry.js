@@ -1,4 +1,8 @@
 const mongoose = require('mongoose')
+require('./User')
+require('./Product')
+require('./Seller')
+require('./Order')
 
 const quotationSchema = new mongoose.Schema({
   quotationNumber: { type: String },
@@ -46,7 +50,7 @@ const directEnquirySchema = new mongoose.Schema({
   sellerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Seller',
-    required: true,
+    required: false,
     index: true
   },
   quantity: {

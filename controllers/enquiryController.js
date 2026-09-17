@@ -1,6 +1,7 @@
 const DirectEnquiry = require('../models/DirectEnquiry')
 const EnquiryMessage = require('../models/EnquiryMessage')
 const Product = require('../models/Product')
+const Seller = require('../models/Seller')
 const Order = require('../models/Order')
 const User = require('../models/User')
 const { createInAppNotification, sendPushNotification } = require('../utils/notifications')
@@ -51,10 +52,20 @@ exports.createEnquiry = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
 
-    const sellerId = product.sellerId
-    if (!sellerId) {
-      return res.status(400).json({ success: false, message: 'Product does not have an associated seller' })
+    // Seller is stored for internal admin context/sourcing
+    const sellerId = product.sellerId || product.storeId || undefined
+
+    // Safe delivery date parsing
+    let parsedDeliveryDate = undefined
+    if (requiredDeliveryDate) {
+      const d = new Date(requiredDeliveryDate)
+      if (!isNaN(d.getTime())) {
+        parsedDeliveryDate = d
+      }
     }
+
+    // Safe target price
+    const parsedTargetPrice = targetPrice && !isNaN(Number(targetPrice)) ? Number(targetPrice) : undefined
 
     const enquiryNumber = generateEnquiryNumber()
 
@@ -65,10 +76,10 @@ exports.createEnquiry = async (req, res) => {
       sellerId: sellerId, // Seller is stored ONLY for internal admin context
       quantity: qty,
       unit: unit || product.unit || 'pieces',
-      variant: variant || '',
-      targetPrice: targetPrice ? Number(targetPrice) : undefined,
+      variant: variant ? String(variant).trim() : '',
+      targetPrice: parsedTargetPrice,
       deliveryLocation: deliveryLocation.trim(),
-      requiredDeliveryDate: requiredDeliveryDate ? new Date(requiredDeliveryDate) : undefined,
+      requiredDeliveryDate: parsedDeliveryDate,
       initialMessage: initialMessage.trim(),
       attachments: Array.isArray(attachments) ? attachments : [],
       status: 'PENDING',
@@ -112,14 +123,18 @@ exports.createEnquiry = async (req, res) => {
       })
     }
 
-    // In-app notification for admin dashboard
-    await createInAppNotification({
-      userType: 'Admin',
-      title: 'New Direct Enquiry',
-      message: `${req.user.name || 'A buyer'} submitted an enquiry for ${qty}x ${product.title}`,
-      type: 'direct_enquiry',
-      data: { enquiryId: enquiry._id }
-    })
+    // In-app notification for admin dashboard (safe non-blocking)
+    try {
+      await createInAppNotification({
+        userType: 'Admin',
+        title: 'New Direct Enquiry',
+        message: `${req.user.name || 'A buyer'} submitted an enquiry for ${qty}x ${product.title}`,
+        type: 'direct_enquiry',
+        data: { enquiryId: enquiry._id }
+      })
+    } catch (notifErr) {
+      console.warn('In-app notification non-fatal error:', notifErr.message)
+    }
 
     res.status(201).json({
       success: true,
