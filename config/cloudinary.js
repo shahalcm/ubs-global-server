@@ -52,6 +52,7 @@ let sellerStorage
 let categoryStorage
 let avatarStorage
 let bannerStorage
+let enquiryStorage
 
 if (isCloudinaryConfigured()) {
   const url = process.env.CLOUDINARY_URL
@@ -134,6 +135,19 @@ if (isCloudinaryConfigured()) {
       public_id: `banner_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     })
   })
+
+  enquiryStorage = new CloudinaryStorage({
+    cloudinary,
+    params: async (req, file) => {
+      const isPdf = file.mimetype === 'application/pdf'
+      const isDoc = file.mimetype?.includes('word') || file.mimetype?.includes('excel') || file.mimetype?.includes('officedocument') || file.mimetype === 'text/plain'
+      return {
+        folder: 'ubsglobal/enquiries',
+        resource_type: (isPdf || isDoc) ? 'raw' : 'auto',
+        public_id: `enquiry_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      }
+    }
+  })
 } else {
   // Fallback to local storage
   productStorage = multer.diskStorage({
@@ -203,6 +217,20 @@ if (isCloudinaryConfigured()) {
     filename: function (req, file, cb) {
       const ext = file.originalname ? path.extname(file.originalname) : '.jpg'
       cb(null, `banner_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`)
+    }
+  })
+
+  enquiryStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      const dir = path.join(__dirname, '../uploads/enquiries')
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      cb(null, dir)
+    },
+    filename: function (req, file, cb) {
+      const ext = file.originalname ? path.extname(file.originalname) : '.jpg'
+      cb(null, `enquiry_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`)
     }
   })
 }
@@ -299,6 +327,26 @@ const resumeUpload = multer({
   }
 })
 
+const enquiryUpload = multer({
+  storage: enquiryStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  fileFilter: (req, file, cb) => {
+    if (
+      file.mimetype.startsWith('image/') ||
+      file.mimetype === 'application/pdf' ||
+      file.mimetype.includes('word') ||
+      file.mimetype.includes('document') ||
+      file.mimetype.includes('excel') ||
+      file.mimetype.includes('sheet') ||
+      file.mimetype === 'text/plain'
+    ) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only images, PDFs, and standard office documents are allowed'), false)
+    }
+  }
+})
+
 module.exports = {
   cloudinary,
   productUpload,
@@ -307,5 +355,6 @@ module.exports = {
   avatarUpload,
   bannerUpload,
   resumeUpload,
+  enquiryUpload,
   isCloudinaryConfigured
 }
