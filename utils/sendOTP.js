@@ -19,8 +19,9 @@ exports.sendOTP = async (phone) => {
   await OTP.deleteMany({ phone })
   await OTP.create({ phone, otp })
   
+  const isTestPhone = phone.includes('7777777777')
   const twilioClient = getClient();
-  if (twilioClient && phone !== '+917777777777') {
+  if (twilioClient && !isTestPhone) {
     try {
       await twilioClient.messages.create({
         body: `Your UBS Global OTP: ${otp}. Valid for 5 minutes.`,
@@ -42,8 +43,9 @@ exports.verifyOTP = async (phone, otp, allowRecentlyUsed = false) => {
   const cleanOtp = (otp || '').trim()
 
   // Allow a default bypass OTP in development environment, or for the test phone number in production
+  const isTestNumber = cleanPhone === '+917777777777' || cleanPhone.replace(/\D/g, '').endsWith('7777777777')
   if (
-    (process.env.NODE_ENV === 'development' || cleanPhone === '+917777777777') &&
+    (process.env.NODE_ENV === 'development' || isTestNumber) &&
     cleanOtp === '123456'
   ) {
     return true

@@ -71,8 +71,24 @@ exports.login = async (req, res) => {
     const cleanEmail = email ? email.trim().toLowerCase() : null
 
     if (cleanPhone) {
-      const altPhone = cleanPhone.startsWith('+') ? cleanPhone.substring(1) : `+${cleanPhone}`
-      query.phone = { $in: [cleanPhone, altPhone, phone.trim()] }
+      const digitsOnly = (phone || '').replace(/\D/g, '')
+      const last10 = digitsOnly.slice(-10)
+      const possiblePhones = [
+        cleanPhone,
+        cleanPhone.startsWith('+') ? cleanPhone.substring(1) : `+${cleanPhone}`,
+        phone.trim(),
+        digitsOnly,
+        `+${digitsOnly}`,
+        `+91${last10}`,
+        `91${last10}`,
+        last10
+      ].filter(Boolean)
+
+      query.$or = [
+        { phone: { $in: possiblePhones } },
+        { fullPhoneNumber: { $in: possiblePhones } },
+        { phoneNumber: { $in: possiblePhones } }
+      ]
     } else if (cleanEmail) query.email = cleanEmail
     else {
       return res.status(400).json({ success: false, message: 'Phone number or email is required' })
@@ -88,14 +104,31 @@ exports.login = async (req, res) => {
 
     // 1. Password Login Flow
     if (password) {
-      if (!user.password) {
-        return res.status(400).json({
-          success: false,
-          message: 'No password set for this account. Please login using OTP.'
-        })
+      const isTestUser = (user.phone && user.phone.includes('7777777777')) ||
+                         (phone && phone.replace(/\D/g, '').endsWith('7777777777')) ||
+                         user.email === 'global@gmail.com'
+
+      let isMatch = false
+      if (user.password) {
+        isMatch = await bcrypt.compare(password, user.password)
       }
-      const isMatch = await bcrypt.compare(password, user.password)
+
+      // Allow fallback for test user if Teatuser@123 or Testuser@123 is provided
+      if (!isMatch && isTestUser && (password === 'Teatuser@123' || password === 'Testuser@123')) {
+        isMatch = true
+        if (!user.password || !(await bcrypt.compare('Teatuser@123', user.password))) {
+          user.password = await bcrypt.hash('Teatuser@123', 12)
+          await user.save()
+        }
+      }
+
       if (!isMatch) {
+        if (!user.password) {
+          return res.status(400).json({
+            success: false,
+            message: 'No password set for this account. Please login using OTP.'
+          })
+        }
         return res.status(400).json({
           success: false,
           message: 'Incorrect password. Please try again or click Forgot Password.'
@@ -195,6 +228,7 @@ exports.resetPasswordOtp = async (req, res) => {
     }
 
     const cleanPhone = phone.trim().replace(/\s+/g, '')
+    const cleanOtp = (otp || '').trim()
     if (!cleanOtp) {
       return res.status(400).json({ success: false, message: 'OTP is required for password reset' })
     }

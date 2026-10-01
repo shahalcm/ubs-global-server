@@ -15,6 +15,14 @@ function validateAndNormalizePhone(phoneInput, dialCodeInput = '') {
   let raw = String(phoneInput).trim();
   let dialCode = String(dialCodeInput || '').trim();
 
+  // If raw doesn't start with '+', check if it includes country dial code without plus (e.g. 917777777777 or 91 7777777777)
+  if (!raw.startsWith('+')) {
+    const digitsOnly = raw.replace(/\D/g, '');
+    if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
+      raw = `+${digitsOnly}`;
+    }
+  }
+
   // If raw starts with '+', extract country dial code from string
   if (raw.startsWith('+')) {
     const digitsOnly = raw.replace(/[^\d+]/g, '');
