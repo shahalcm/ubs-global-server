@@ -271,6 +271,9 @@ exports.getProducts = async (req, res) => {
       rating
     } = req.query
 
+    const pageNum = Math.max(1, parseInt(page, 10) || 1)
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
+
     // Only show approved active products to buyers
     let query = {
       approvalStatus: 'approved',
@@ -378,8 +381,8 @@ exports.getProducts = async (req, res) => {
         select: `shopName shopLogo rating totalReviews isVerified businessType`
       })
       .sort(sortQuery)
-      .limit(Number(limit))
-      .skip((Number(page) - 1) * Number(limit))
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
       .lean()
 
     let total = await Product.countDocuments(query)
@@ -404,9 +407,15 @@ exports.getProducts = async (req, res) => {
             select: `shopName shopLogo rating totalReviews isVerified businessType`
           })
           .sort(sortQuery)
-          .limit(Number(limit))
+          .skip((pageNum - 1) * limitNum)
+          .limit(limitNum)
           .lean()
-        total = products.length
+        total = await Product.countDocuments({
+          approvalStatus: 'approved',
+          status: 'active',
+          stock: { $gt: 0 },
+          category: categoryDoc._id
+        })
       }
 
       // 2. If still empty, return general active products
@@ -422,23 +431,46 @@ exports.getProducts = async (req, res) => {
             select: `shopName shopLogo rating totalReviews isVerified businessType`
           })
           .sort(sortQuery)
-          .limit(Number(limit))
+          .skip((pageNum - 1) * limitNum)
+          .limit(limitNum)
           .lean()
-        total = products.length
+        total = await Product.countDocuments({
+          approvalStatus: 'approved',
+          status: 'active',
+          stock: { $gt: 0 }
+        })
       }
     }
 
     const localizedProducts = products.map(p => mapProductLanguage(p, req.language))
+
+    const totalPages = Math.ceil(total / limitNum) || 1
+    const hasNextPage = pageNum * limitNum < total
+    const hasPreviousPage = pageNum > 1
+
+    console.log({
+      endpoint: 'getProducts',
+      category: category || 'all',
+      page: pageNum,
+      limit: limitNum,
+      total,
+      returned: localizedProducts.length,
+      hasNextPage
+    })
 
     res.json({
       success: true,
       products: localizedProducts,
       isRelated,
       pagination: {
-        page: Number(page),
-        pages: Math.ceil(total / Number(limit)) || 1,
+        page: pageNum,
+        limit: limitNum,
         total,
-        hasMore: Number(page) * Number(limit) < total
+        totalPages,
+        hasNextPage,
+        hasPreviousPage,
+        hasMore: hasNextPage,
+        pages: totalPages
       }
     })
   } catch (error) {
@@ -796,17 +828,23 @@ exports.searchProducts = async (req, res) => {
 exports.getProductsByCategory = async (req, res) => {
   try {
     const { categoryId } = req.params
-    const { exclude, limit = 20 } = req.query
+    const { exclude, limit = 20, page = 1 } = req.query
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1)
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
 
     let categoryDoc = null
     if (mongoose.Types.ObjectId.isValid(categoryId)) {
       categoryDoc = await Category.findById(categoryId)
     }
     if (!categoryDoc) {
+      const cleanCat = String(categoryId).trim()
+      const cleanSlug = cleanCat.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
       categoryDoc = await Category.findOne({
         $or: [
-          { slug: categoryId.toLowerCase() },
-          { name: { $regex: new RegExp(`^${categoryId}$`, 'i') } }
+          { slug: cleanSlug },
+          { slug: cleanCat.toLowerCase() },
+          { name: { $regex: new RegExp(`^${cleanCat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
         ]
       })
     }
@@ -820,38 +858,75 @@ exports.getProductsByCategory = async (req, res) => {
       query._id = { $ne: exclude }
     }
 
-    const categoryConditions = []
     if (categoryDoc) {
-      categoryConditions.push({ category: categoryDoc._id })
-      categoryConditions.push({ category: { $regex: new RegExp(`^${categoryDoc.name}$`, 'i') } })
-      categoryConditions.push({ category: { $regex: new RegExp(`^${categoryDoc.slug}$`, 'i') } })
+      query.category = categoryDoc._id
+    } else if (mongoose.Types.ObjectId.isValid(categoryId)) {
+      query.category = new mongoose.Types.ObjectId(categoryId)
+    } else {
+      // If neither categoryDoc nor valid ObjectId, search by subcategory, title, or tags
+      const cleanCat = String(categoryId).trim()
+      query.$or = [
+        { tags: { $regex: cleanCat, $options: 'i' } },
+        { title: { $regex: cleanCat, $options: 'i' } },
+        { subcategory: { $regex: cleanCat, $options: 'i' } }
+      ]
     }
-    if (mongoose.Types.ObjectId.isValid(categoryId)) {
-      categoryConditions.push({ category: categoryId })
-    }
-    categoryConditions.push({ category: { $regex: new RegExp(`^${categoryId}$`, 'i') } })
-
-    query.$or = categoryConditions
 
     let products = await Product.find(query)
       .populate('category', 'name slug image')
       .populate('sellerId', 'shopName shopLogo rating isVerified')
       .sort({ createdAt: -1 })
-      .limit(Number(limit))
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean()
+
+    let total = await Product.countDocuments(query)
 
     // Fallback: If no products found with strict approvalStatus/status query, try without approvalStatus filter
-    if (products.length === 0) {
-      delete query.approvalStatus
-      delete query.status
-      products = await Product.find(query)
+    if (products.length === 0 && pageNum === 1) {
+      const fallbackQuery = { ...query }
+      delete fallbackQuery.approvalStatus
+      delete fallbackQuery.status
+      products = await Product.find(fallbackQuery)
         .populate('category', 'name slug image')
         .populate('sellerId', 'shopName shopLogo rating isVerified')
         .sort({ createdAt: -1 })
-        .limit(Number(limit))
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean()
+      total = await Product.countDocuments(fallbackQuery)
     }
 
-    res.json({ success: true, products })
+    const totalPages = Math.ceil(total / limitNum) || 1
+    const hasNextPage = pageNum * limitNum < total
+    const hasPreviousPage = pageNum > 1
+
+    console.log({
+      endpoint: 'getProductsByCategory',
+      categoryId,
+      page: pageNum,
+      limit: limitNum,
+      total,
+      returned: products.length,
+      hasNextPage
+    })
+
+    res.json({
+      success: true,
+      products,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNextPage,
+        hasPreviousPage,
+        hasMore: hasNextPage,
+        pages: totalPages
+      }
+    })
   } catch (error) {
+    console.error('getProductsByCategory error:', error)
     res.status(500).json({ success: false, message: error.message })
   }
 }
